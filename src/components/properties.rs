@@ -1,7 +1,7 @@
-use super::{Component, EventState, StatefulDrawableComponent};
+use super::{Component, EventState};
 use crate::clipboard::copy_to_clipboard;
 use crate::components::command::{self, CommandInfo};
-use crate::components::TableComponent;
+use crate::components::{TableComponent, Drawable};
 use crate::config::KeyConfig;
 use crate::database::Pool;
 use crate::event::Key;
@@ -15,6 +15,8 @@ use tui::{
     widgets::{Block, Borders, List, ListItem},
     Frame,
 };
+use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+use crate::components::tab::{Tab, TabType};
 
 #[derive(Debug, PartialEq)]
 pub enum Focus {
@@ -37,6 +39,29 @@ pub struct PropertiesComponent {
     index_table: TableComponent,
     focus: Focus,
     key_config: KeyConfig,
+}
+
+impl DatabaseMessageObserver for PropertiesComponent {
+    fn handle_message(&mut self, message: &DatabaseEvent) -> Result<()> {
+        match message {
+            DatabaseEvent::TableSelected(_, _) => {
+                self.reset();
+                // TODO: Implement other logic for
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<B : Backend> Tab<B> for PropertiesComponent {
+    fn tab_type(&self) -> TabType {
+        TabType::Properties
+    }
+
+    fn tab_name(&self) -> String {
+        String::from("Properties")
+    }
 }
 
 impl PropertiesComponent {
@@ -137,8 +162,8 @@ impl PropertiesComponent {
     }
 }
 
-impl StatefulDrawableComponent for PropertiesComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for PropertiesComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Length(20), Constraint::Min(1)])

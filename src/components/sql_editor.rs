@@ -1,6 +1,5 @@
 use super::{
-    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
-    StatefulDrawableComponent, TableComponent,
+    compute_character_width, CompletionComponent, Component, EventState, MovableComponent, TableComponent,
 };
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
@@ -17,6 +16,9 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+use crate::components::tab::{Tab, TabType};
+use crate::components::Drawable;
 
 struct QueryResult {
     updated_rows: u64,
@@ -44,6 +46,29 @@ pub struct SqlEditorComponent {
     paragraph_state: ParagraphState,
     focus: Focus,
 }
+
+impl DatabaseMessageObserver for SqlEditorComponent {
+    fn handle_message(&mut self, message: &DatabaseEvent) -> Result<()> {
+        match message {
+            DatabaseEvent::TableSelected(_, _) => {
+                self.reset();
+                // TODO: implement rest of logic for table selected.
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<B : Backend> Tab<B> for SqlEditorComponent {
+    fn tab_type(&self) -> TabType {
+        TabType::Sql
+    }
+
+    fn tab_name(&self) -> String {
+        String::from("Sql Editor")
+    }
+}
+
 
 impl SqlEditorComponent {
     pub fn new(key_config: KeyConfig) -> Self {
@@ -140,8 +165,8 @@ impl SqlEditorComponent {
     }
 }
 
-impl StatefulDrawableComponent for SqlEditorComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for SqlEditorComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(if matches!(self.focus, Focus::Table) {

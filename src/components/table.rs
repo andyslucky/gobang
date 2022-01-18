@@ -1,6 +1,10 @@
 use super::{
-    utils::scroll_vertical::VerticalScroll, Component, DrawableComponent, EventState,
-    StatefulDrawableComponent, TableStatusComponent, TableValueComponent,
+    utils::scroll_vertical::VerticalScroll,
+    Component,
+    DrawableComponent,
+    EventState,
+    TableStatusComponent,
+    TableValueComponent
 };
 use crate::components::command::{self, CommandInfo};
 use crate::config::KeyConfig;
@@ -16,6 +20,7 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use crate::components::Drawable;
 
 pub struct TableComponent {
     pub headers: Vec<String>,
@@ -400,8 +405,8 @@ impl TableComponent {
     }
 }
 
-impl StatefulDrawableComponent for TableComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for TableComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let chunks = Layout::default()
             .vertical_margin(1)
             .horizontal_margin(1)

@@ -1,4 +1,4 @@
-use super::{Component, EventState, StatefulDrawableComponent};
+use super::{Component, EventState};
 use crate::components::command::CommandInfo;
 use crate::config::{Connection, KeyConfig};
 use crate::event::Key;
@@ -11,6 +11,7 @@ use tui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
     Frame,
 };
+use crate::components::Drawable;
 
 pub struct ConnectionsComponent {
     connections: Vec<Connection>,
@@ -81,8 +82,8 @@ impl ConnectionsComponent {
     }
 }
 
-impl StatefulDrawableComponent for ConnectionsComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, _area: Rect, _focused: bool) -> Result<()> {
+impl<B : Backend > Drawable<B> for ConnectionsComponent {
+    fn draw(&mut self, f: &mut Frame<B>, _area: Rect, _focused: bool) -> Result<()> {
         let width = 80;
         let height = 20;
         let conns = &self.connections;

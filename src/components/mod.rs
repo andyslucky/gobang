@@ -18,6 +18,7 @@ pub mod utils;
 #[cfg(debug_assertions)]
 pub mod debug;
 
+use std::any::Any;
 pub use command::{CommandInfo, CommandText};
 pub use completion::CompletionComponent;
 pub use connections::ConnectionsComponent;
@@ -28,7 +29,7 @@ pub use help::HelpComponent;
 pub use properties::PropertiesComponent;
 pub use record_table::RecordTableComponent;
 pub use sql_editor::SqlEditorComponent;
-pub use tab::TabComponent;
+pub use tab::TabToolbar;
 pub use table::TableComponent;
 pub use table_filter::TableFilterComponent;
 pub use table_status::TableStatusComponent;
@@ -70,8 +71,8 @@ pub trait DrawableComponent {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
 }
 
-pub trait StatefulDrawableComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
+pub trait Drawable<B : Backend> {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()>;
 }
 
 pub trait MovableComponent {
@@ -91,6 +92,7 @@ pub trait Component {
     fn commands(&self, out: &mut Vec<CommandInfo>);
 
     fn event(&mut self, key: crate::event::Key) -> Result<EventState>;
+    fn reset(&mut self){}
 
     async fn async_event(
         &mut self,

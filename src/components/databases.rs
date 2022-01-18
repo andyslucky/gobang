@@ -9,7 +9,7 @@ use crate::event::Key;
 use crate::ui::common_nav;
 use crate::ui::scrolllist::draw_list_block;
 use anyhow::Result;
-use database_tree::{Database, DatabaseTree, DatabaseTreeItem};
+use database_tree::{Database, DatabaseTree, DatabaseTreeItem, Table};
 use std::collections::BTreeSet;
 use std::convert::From;
 use tui::{
@@ -25,12 +25,20 @@ use tui::{
 const FOLDER_ICON_COLLAPSED: &str = "\u{25b8}";
 // ▾
 const FOLDER_ICON_EXPANDED: &str = "\u{25be}";
-const EMPTY_STR: &str = "";
 
 #[derive(PartialEq)]
 pub enum Focus {
     Filter,
     Tree,
+}
+
+pub enum DatabaseEvent {
+    TableSelected(Database, Table)
+}
+
+pub trait DatabaseMessageObserver {
+    #[allow(unused_variables)]
+    fn handle_message(&mut self, message : &DatabaseEvent) -> Result<()> {Ok(())}
 }
 
 pub struct DatabasesComponent {
@@ -98,7 +106,8 @@ impl DatabasesComponent {
                 FOLDER_ICON_EXPANDED
             }
         } else {
-            EMPTY_STR
+            // Naming self-explanatory constants is an anti-pattern, changing to literal value.
+            ""
         };
 
         if let Some(filter) = filter {

@@ -1,6 +1,5 @@
 use super::{
-    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
-    StatefulDrawableComponent,
+    compute_character_width, CompletionComponent, Component, EventState, MovableComponent
 };
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
@@ -16,6 +15,7 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use crate::components::Drawable;
 
 pub struct TableFilterComponent {
     key_config: KeyConfig,
@@ -129,8 +129,8 @@ impl TableFilterComponent {
     }
 }
 
-impl StatefulDrawableComponent for TableFilterComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for TableFilterComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let query = Paragraph::new(Spans::from(vec![
             Span::styled(
                 self.table
