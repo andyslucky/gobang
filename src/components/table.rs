@@ -6,6 +6,7 @@ use super::{
     TableStatusComponent,
     TableValueComponent
 };
+use async_trait::async_trait;
 use crate::components::command::{self, CommandInfo};
 use crate::config::KeyConfig;
 use crate::event::Key;
@@ -20,6 +21,7 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use crate::app::GlobalMessageQueue;
 use crate::components::Drawable;
 
 pub struct TableComponent {
@@ -522,6 +524,7 @@ impl<B : Backend> Drawable<B> for TableComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableComponent {
     fn commands(&self, out: &mut Vec<CommandInfo>) {
         out.push(CommandInfo::new(command::extend_selection_by_one_cell(
@@ -529,7 +532,7 @@ impl Component for TableComponent {
         )));
     }
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.scroll_left {
             self.previous_column();
             return Ok(EventState::Consumed);

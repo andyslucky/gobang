@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use crate::log::LogLevel;
 use crate::Key;
 use serde::Deserialize;
@@ -9,6 +10,7 @@ use structopt::StructOpt;
 
 #[cfg(test)]
 use serde::Serialize;
+use crate::database::{MySqlPool, Pool, PostgresPool, SqlitePool};
 
 #[derive(StructOpt, Debug)]
 pub struct CliConfig {

@@ -1,24 +1,59 @@
-use crate::clipboard::copy_to_clipboard;
-use crate::components::{
-    CommandInfo, Component as _, DrawableComponent as _, EventState, Drawable
-};
-use crate::database::{MySqlPool, Pool, PostgresPool, SqlitePool, RECORDS_LIMIT_PER_PAGE};
-use crate::event::Key;
-use crate::{
-    components::tab::TabType,
-    components::{
-        command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent,
-        PropertiesComponent, RecordTableComponent, SqlEditorComponent,TabToolbar
-    },
-    config::Config,
-};
-use crate::components::tab::TabPanel;
+use std::any::Any;
+use std::sync::{Arc};
+use tokio::sync::RwLock;
+
 use tui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout, Rect},
     Frame,
+    layout::{Constraint, Direction, Layout, Rect},
 };
-use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+
+use crate::{
+    components::{
+        command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent,
+        PropertiesComponent, RecordTableComponent, SqlEditorComponent, TabToolbar
+    },
+    components::tab::TabType,
+    config::Config,
+};
+use crate::clipboard::copy_to_clipboard;
+use crate::components::{
+    CommandInfo, Component as _, Drawable, DrawableComponent as _, EventState
+};
+use crate::components::connections::ConnectionEvent;
+use crate::components::databases::DatabaseEvent;
+use crate::components::tab::TabPanel;
+use crate::config::Connection;
+use crate::database::{MySqlPool, Pool, PostgresPool, RECORDS_LIMIT_PER_PAGE, SqlitePool};
+use crate::event::Key;
+
+pub type SharedPool = Arc<RwLock<Option<Box<dyn Pool>>>>;
+
+/// Dynamic trait representing a message/event. Messages may be added to the global event queue during
+/// by any component's event handler. The global message queue will be processed at the end of each key event
+/// and at the end of each tick.
+pub trait AppMessage : Send + Sync{
+    fn as_any(&self) -> &(dyn Any + Send + Sync);
+}
+
+
+/// Global event queue. Stores queued events until the
+pub struct GlobalMessageQueue {
+    event_queue : Vec<Box<dyn AppMessage>>
+}
+
+
+
+impl GlobalMessageQueue {
+    fn drain(&mut self) -> Vec<Box<dyn AppMessage>> {
+        if self.event_queue.is_empty() {return vec![];}
+        return self.event_queue.drain(0..).collect();
+    }
+
+    pub fn push(&mut self, message : Box<dyn AppMessage>) {
+        self.event_queue.push(message);
+    }
+}
 
 pub enum Focus {
     DatabaseList,
@@ -31,8 +66,9 @@ pub struct App<B : Backend> {
     help: HelpComponent,
     databases: DatabasesComponent,
     connections: ConnectionsComponent,
-    pool: Option<Box<dyn Pool>>,
+    pool: SharedPool,
     left_main_chunk_percentage: u16,
+    message_queue : GlobalMessageQueue,
     pub config: Config,
     pub error: ErrorComponent,
 }
@@ -40,15 +76,17 @@ pub struct App<B : Backend> {
 impl<B : Backend> App<B> {
     pub fn new(config: Config) -> App<B> {
         let config_clone = config.clone();
+        let share_pool = Arc::new(RwLock::new(None));
          App {
             config: config.clone(),
             connections: ConnectionsComponent::new(config.key_config.clone(), config.conn),
-            tab_panel: TabPanel::new(config_clone),
+            tab_panel: TabPanel::new(config_clone,share_pool.clone()),
             help: HelpComponent::new(config.key_config.clone()),
-            databases: DatabasesComponent::new(config.key_config.clone()),
+            databases: DatabasesComponent::new(config.key_config.clone(), share_pool.clone()),
             error: ErrorComponent::new(config.key_config),
             focus: Focus::ConnectionList,
-            pool: None,
+            pool: share_pool.clone(),
+            message_queue: GlobalMessageQueue{event_queue: vec![]},
             left_main_chunk_percentage: 15,
         }
     }
@@ -114,33 +152,20 @@ impl<B : Backend> App<B> {
         res
     }
 
-    async fn update_databases(&mut self) -> anyhow::Result<()> {
-        if let Some(conn) = self.connections.selected_connection() {
-            if let Some(pool) = self.pool.as_ref() {
-                pool.close().await;
-            }
-            self.pool = if conn.is_mysql() {
-                Some(Box::new(
-                    MySqlPool::new(conn.database_url()?.as_str()).await?,
-                ))
-            } else if conn.is_postgres() {
-                Some(Box::new(
-                    PostgresPool::new(conn.database_url()?.as_str()).await?,
-                ))
-            } else {
-                Some(Box::new(
-                    SqlitePool::new(conn.database_url()?.as_str()).await?,
-                ))
-            };
-            self.databases
-                .update(conn, self.pool.as_ref().unwrap())
-                .await?;
-            self.focus = Focus::DatabaseList;
-            // TODO: Reimplement reset
-            // self.record_table.reset();
-            // self.tab.reset();
+    async fn get_pool_from_conn(&mut self, conn: &Connection) -> anyhow::Result<Box<dyn Pool>> {
+        if conn.is_mysql() {
+            return Ok(Box::new(
+                MySqlPool::new(conn.database_url()?.as_str()).await?,
+            ))
+        } else if conn.is_postgres() {
+            return Ok(Box::new(
+                PostgresPool::new(conn.database_url()?.as_str()).await?,
+            ))
+        } else {
+            return Ok(Box::new(
+                SqlitePool::new(conn.database_url()?.as_str()).await?,
+            ))
         }
-        Ok(())
     }
 
     async fn update_record_table(&mut self) -> anyhow::Result<()> {
@@ -168,70 +193,91 @@ impl<B : Backend> App<B> {
 
     pub async fn event(&mut self, key: Key) -> anyhow::Result<EventState> {
         self.update_commands();
-
-        // send the event to all children, if it is handled then return
+        let mut result : anyhow::Result<EventState> = Ok(EventState::NotConsumed);
+            // send the event to all children, if it is handled then return
         if self.components_event(key).await?.is_consumed() {
-            return Ok(EventState::Consumed);
-        };
+            result = Ok(EventState::Consumed);
+        } else if self.move_focus(key)?.is_consumed() {
+            result = Ok(EventState::Consumed)
+        }
 
-        if self.move_focus(key)?.is_consumed() {
-            return Ok(EventState::Consumed);
-        };
-        Ok(EventState::NotConsumed)
+        self.dispatch_messages().await?;
+        return result;
+    }
+    async fn on_conn_changed(&mut self, conn: &Connection) {
+        if let Some(new_pool) = self.get_pool_from_conn(conn).await.ok() {
+            let mut pool_w_lock = self.pool.write().await;
+            if let Some(current_pool) = pool_w_lock.as_ref() {
+                current_pool.close().await;
+            }
+            (*pool_w_lock) = Some(new_pool);
+        }
+        self.focus = Focus::DatabaseList;
+    }
+
+    async fn handle_messages(&mut self, messages : &mut Vec<Box<dyn AppMessage>>) -> anyhow::Result<()>{
+        for m in messages.iter() {
+            if let Some(conn_event) = m.as_any().downcast_ref::<ConnectionEvent>() {
+                match conn_event {
+                    ConnectionEvent::ConnectionChanged(conn_opt) => {
+                        if let Some(conn)  = conn_opt {
+                            self.on_conn_changed(conn).await;
+                        }
+                        // self.on_conn_changed(conn_opt).await;
+                    }
+                }
+            }
+
+            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
+                match db_event {
+                    DatabaseEvent::TableSelected(_, _) => {
+                        self.focus = Focus::TabPanel;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Drains the global message queue and passes messages to all components simultaneously.
+    async fn dispatch_messages(&mut self) -> anyhow::Result<()> {
+        let mut messages = self.message_queue.drain();
+
+        if !messages.is_empty() {
+            // dispatch messages on app first.
+            self.handle_messages(&mut messages).await?;
+            // Send messages to each child component
+            return futures::future::join_all(vec![
+                self.databases.handle_messages(&messages),
+                self.tab_panel.handle_messages(&messages),
+                self.connections.handle_messages(&messages)
+            ]).await.drain(0..).reduce(Result::and).unwrap();
+        }
+        Ok(())
     }
 
     async fn components_event(&mut self, key: Key) -> anyhow::Result<EventState> {
-        if self.error.event(key)?.is_consumed() {
+        if self.error.event(key, &mut self.message_queue).await?.is_consumed() {
             return Ok(EventState::Consumed);
         }
 
-        if !matches!(self.focus, Focus::ConnectionList) && self.help.event(key)?.is_consumed() {
+        if !matches!(self.focus, Focus::ConnectionList) && self.help.event(key, &mut self.message_queue).await?.is_consumed() {
             return Ok(EventState::Consumed);
         }
 
         match self.focus {
             Focus::ConnectionList => {
-                if self.connections.event(key)?.is_consumed() {
-                    return Ok(EventState::Consumed);
-                }
-
-                if key == self.config.key_config.enter {
-                    self.update_databases().await?;
+                if self.connections.event(key, &mut self.message_queue).await?.is_consumed() {
                     return Ok(EventState::Consumed);
                 }
             }
             Focus::DatabaseList => {
-                if self.databases.event(key)?.is_consumed() {
+                if self.databases.event(key, &mut self.message_queue).await?.is_consumed() {
                     return Ok(EventState::Consumed);
                 }
-
-                 if key == self.config.key_config.enter && self.databases.tree_focused() {
-                     if let Some((database, table)) = self.databases.tree().selected_table() {
-                         self.tab_panel.handle_message(&DatabaseEvent::TableSelected(database,table))?;
-                     }
-
-                 }
-                // if key == self.config.key_config.enter && self.databases.tree_focused() {
-                //     if let Some((database, table)) = self.databases.tree().selected_table() {
-                //         self.record_table.reset();
-                //         let (headers, records) = self
-                //             .pool
-                //             .as_ref()
-                //             .unwrap()
-                //             .get_records(&database, &table, 0, None)
-                //             .await?;
-                //         self.record_table
-                //             .update(records, headers, database.clone(), table.clone());
-                //         self.properties
-                //             .update(database.clone(), table.clone(), self.pool.as_ref().unwrap())
-                //             .await?;
-                //         self.focus = Focus::TabPanel;
-                //     }
-                //     return Ok(EventState::Consumed);
-                // }
             }
             Focus::TabPanel => {
-                if self.tab_panel.event(key)?.is_consumed() {
+                if self.tab_panel.event(key, &mut self.message_queue).await?.is_consumed() {
                     return Ok(EventState::Consumed)
                 }
                 // match self.tab.selected_tab {
@@ -339,9 +385,6 @@ impl<B : Backend> App<B> {
             self.focus = Focus::ConnectionList;
             return Ok(EventState::Consumed);
         }
-        // if self.tab.event(key)?.is_consumed() {
-        //     return Ok(EventState::Consumed);
-        // }
         match self.focus {
             Focus::ConnectionList => {
                 if key == self.config.key_config.enter {

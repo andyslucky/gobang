@@ -1,22 +1,26 @@
-use super::{Component, EventState};
-use crate::clipboard::copy_to_clipboard;
-use crate::components::command::{self, CommandInfo};
-use crate::components::{TableComponent, Drawable};
-use crate::config::KeyConfig;
-use crate::database::Pool;
-use crate::event::Key;
 use anyhow::Result;
 use async_trait::async_trait;
-use database_tree::{Database, Table};
 use tui::{
     backend::Backend,
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, List, ListItem},
-    Frame,
 };
-use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+
+use database_tree::{Database, Table};
+
+use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
+use crate::clipboard::copy_to_clipboard;
+use crate::components::{Drawable, TableComponent};
+use crate::components::command::{self, CommandInfo};
+use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
+use crate::config::KeyConfig;
+use crate::database::{Pool, TableRow};
+use crate::event::Key;
+
+use super::{Component, EventState};
 
 #[derive(Debug, PartialEq)]
 pub enum Focus {
@@ -39,19 +43,7 @@ pub struct PropertiesComponent {
     index_table: TableComponent,
     focus: Focus,
     key_config: KeyConfig,
-}
-
-impl DatabaseMessageObserver for PropertiesComponent {
-    fn handle_message(&mut self, message: &DatabaseEvent) -> Result<()> {
-        match message {
-            DatabaseEvent::TableSelected(_, _) => {
-                self.reset();
-                // TODO: Implement other logic for
-            }
-        }
-
-        Ok(())
-    }
+    shared_pool : SharedPool
 }
 
 impl<B : Backend> Tab<B> for PropertiesComponent {
@@ -65,7 +57,7 @@ impl<B : Backend> Tab<B> for PropertiesComponent {
 }
 
 impl PropertiesComponent {
-    pub fn new(key_config: KeyConfig) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
         Self {
             column_table: TableComponent::new(key_config.clone()),
             constraint_table: TableComponent::new(key_config.clone()),
@@ -73,6 +65,7 @@ impl PropertiesComponent {
             index_table: TableComponent::new(key_config.clone()),
             focus: Focus::Column,
             key_config,
+            shared_pool
         }
     }
 
@@ -85,14 +78,24 @@ impl PropertiesComponent {
         }
     }
 
-    pub async fn update(
+    async fn update(
         &mut self,
         database: Database,
         table: Table,
-        pool: &Box<dyn Pool>,
     ) -> Result<()> {
         self.column_table.reset();
-        let columns = pool.get_columns(&database, &table).await?;
+        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut constraints: Vec<Box<dyn TableRow>> = vec![];
+        let mut indexes: Vec<Box<dyn TableRow>> = vec![];
+        let mut foreign_keys: Vec<Box<dyn TableRow>> = vec![];
+
+        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+            columns = pool.get_columns(&database, &table).await?;
+            foreign_keys = pool.get_foreign_keys(&database, &table).await?;
+            constraints = pool.get_constraints(&database, &table).await?;
+            indexes = pool.get_indexes(&database, &table).await?;
+        }
+
         if !columns.is_empty() {
             self.column_table.update(
                 columns
@@ -105,7 +108,6 @@ impl PropertiesComponent {
             );
         }
         self.constraint_table.reset();
-        let constraints = pool.get_constraints(&database, &table).await?;
         if !constraints.is_empty() {
             self.constraint_table.update(
                 constraints
@@ -118,7 +120,6 @@ impl PropertiesComponent {
             );
         }
         self.foreign_key_table.reset();
-        let foreign_keys = pool.get_foreign_keys(&database, &table).await?;
         if !foreign_keys.is_empty() {
             self.foreign_key_table.update(
                 foreign_keys
@@ -131,7 +132,6 @@ impl PropertiesComponent {
             );
         }
         self.index_table.reset();
-        let indexes = pool.get_indexes(&database, &table).await?;
         if !indexes.is_empty() {
             self.index_table.update(
                 indexes
@@ -204,8 +204,8 @@ impl Component for PropertiesComponent {
         )));
     }
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
-        self.focused_component().event(key)?;
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+        self.focused_component().event(key, message_queue).await?;
 
         if key == self.key_config.copy {
             if let Some(text) = self.focused_component().selected_cells() {
@@ -221,5 +221,18 @@ impl Component for PropertiesComponent {
             self.focus = Focus::Index;
         }
         Ok(EventState::NotConsumed)
+    }
+    async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        for m in messages.iter() {
+            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
+                match db_event {
+                    DatabaseEvent::TableSelected(database, table) => {
+                        self.reset();
+                        self.update(database.clone(), table.clone()).await?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

@@ -16,7 +16,8 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
-use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+use crate::app::{GlobalMessageQueue, SharedPool};
+use crate::components::databases::{DatabaseEvent};
 use crate::components::tab::{Tab, TabType};
 use crate::components::Drawable;
 
@@ -45,18 +46,7 @@ pub struct SqlEditorComponent {
     key_config: KeyConfig,
     paragraph_state: ParagraphState,
     focus: Focus,
-}
-
-impl DatabaseMessageObserver for SqlEditorComponent {
-    fn handle_message(&mut self, message: &DatabaseEvent) -> Result<()> {
-        match message {
-            DatabaseEvent::TableSelected(_, _) => {
-                self.reset();
-                // TODO: implement rest of logic for table selected.
-            }
-        }
-        Ok(())
-    }
+    shared_pool : SharedPool
 }
 
 impl<B : Backend> Tab<B> for SqlEditorComponent {
@@ -71,7 +61,7 @@ impl<B : Backend> Tab<B> for SqlEditorComponent {
 
 
 impl SqlEditorComponent {
-    pub fn new(key_config: KeyConfig) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
         Self {
             input: Vec::new(),
             input_idx: 0,
@@ -82,6 +72,7 @@ impl SqlEditorComponent {
             paragraph_state: ParagraphState::default(),
             query_result: None,
             key_config,
+            shared_pool
         }
     }
 
@@ -178,7 +169,8 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
 
         let editor = StatefulParagraph::new(self.input.iter().collect::<String>())
             .wrap(Wrap { trim: true })
-            .block(Block::default().borders(Borders::ALL));
+            .block(Block::default().borders(Borders::ALL))
+            .style(if focused {Style::default()} else {Style::default().fg(Color::DarkGray)});
 
         f.render_stateful_widget(editor, layout[0], &mut self.paragraph_state);
 
@@ -229,7 +221,7 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
 impl Component for SqlEditorComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         let input_str: String = self.input.iter().collect();
 
         if key == self.key_config.focus_above && matches!(self.focus, Focus::Table) {
@@ -277,7 +269,7 @@ impl Component for SqlEditorComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            key if matches!(self.focus, Focus::Table) => return self.table.event(key),
+            key if matches!(self.focus, Focus::Table) => return self.table.event(key, message_queue).await,
             _ => (),
         }
         return Ok(EventState::NotConsumed);

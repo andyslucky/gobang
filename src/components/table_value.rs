@@ -2,6 +2,7 @@ use super::{Component, DrawableComponent, EventState};
 use crate::components::command::CommandInfo;
 use crate::event::Key;
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -9,6 +10,7 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use crate::app::GlobalMessageQueue;
 
 pub struct TableValueComponent {
     value: String,
@@ -34,10 +36,11 @@ impl DrawableComponent for TableValueComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableValueComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, _key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         todo!("scroll");
     }
 }

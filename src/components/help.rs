@@ -1,5 +1,6 @@
 use super::{Component, DrawableComponent, EventState};
 use crate::components::command::CommandInfo;
+use async_trait::async_trait;
 use crate::config::KeyConfig;
 use crate::event::Key;
 use crate::version::Version;
@@ -14,6 +15,7 @@ use tui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
+use crate::app::GlobalMessageQueue;
 
 pub struct HelpComponent {
     cmds: Vec<CommandInfo>,
@@ -71,10 +73,11 @@ impl DrawableComponent for HelpComponent {
     }
 }
 
+#[async_trait]
 impl Component for HelpComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if self.visible {
             if key == self.key_config.exit_popup {
                 self.hide();

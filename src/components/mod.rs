@@ -15,10 +15,21 @@ pub mod table_status;
 pub mod table_value;
 pub mod utils;
 
+
+// macro_rules! handle_message {
+//     ($message : expr, $msg_type : ident, $body : tt) => {
+//         if let Some(e) = $message.as_any().downcast_ref::<$msg_type>() {
+//                 match e {
+//                     $body,
+//                     _ => ()
+//                 }
+//         }
+//     }
+// }
+// pub(crate) use handle_message;
 #[cfg(debug_assertions)]
 pub mod debug;
 
-use std::any::Any;
 pub use command::{CommandInfo, CommandText};
 pub use completion::CompletionComponent;
 pub use connections::ConnectionsComponent;
@@ -44,6 +55,8 @@ use async_trait::async_trait;
 use std::convert::TryInto;
 use tui::{backend::Backend, layout::Rect, Frame};
 use unicode_width::UnicodeWidthChar;
+use crate::app::{AppMessage, GlobalMessageQueue};
+use crate::Key;
 
 #[derive(PartialEq, Debug)]
 pub enum EventState {
@@ -86,14 +99,20 @@ pub trait MovableComponent {
     ) -> Result<()>;
 }
 
+
+
 /// base component trait
 #[async_trait]
 pub trait Component {
     fn commands(&self, out: &mut Vec<CommandInfo>);
 
-    fn event(&mut self, key: crate::event::Key) -> Result<EventState>;
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState>;
+
+    async fn handle_messages(&mut self, messages : &Vec<Box<dyn AppMessage>>) -> Result<()> {Ok(())}
+
     fn reset(&mut self){}
 
+    #[deprecated]
     async fn async_event(
         &mut self,
         _key: crate::event::Key,

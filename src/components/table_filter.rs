@@ -1,6 +1,7 @@
 use super::{
     compute_character_width, CompletionComponent, Component, EventState, MovableComponent
 };
+use async_trait::async_trait;
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
 use crate::event::Key;
@@ -15,6 +16,7 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use crate::app::GlobalMessageQueue;
 use crate::components::Drawable;
 
 pub struct TableFilterComponent {
@@ -190,10 +192,11 @@ impl<B : Backend> Drawable<B> for TableFilterComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableFilterComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         let input_str: String = self.input.iter().collect();
 
         // apply comletion candidates
@@ -254,7 +257,7 @@ impl Component for TableFilterComponent {
                 }
                 Ok(EventState::Consumed)
             }
-            key => self.completion.event(key),
+            key => self.completion.event(key, message_queue).await,
         }
     }
 }

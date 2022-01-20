@@ -1,7 +1,9 @@
+use std::any::Any;
 use super::{Component, EventState};
 use crate::components::command::CommandInfo;
 use crate::config::{Connection, KeyConfig};
 use crate::event::Key;
+use async_trait::async_trait;
 use anyhow::Result;
 use tui::{
     backend::Backend,
@@ -11,7 +13,19 @@ use tui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
     Frame,
 };
+use crate::app::{AppMessage, GlobalMessageQueue};
+use crate::components::databases::DatabaseEvent;
 use crate::components::Drawable;
+
+pub enum ConnectionEvent {
+    ConnectionChanged(Option<Connection>),
+}
+
+impl AppMessage for ConnectionEvent {
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+}
 
 pub struct ConnectionsComponent {
     connections: Vec<Connection>,
@@ -112,10 +126,13 @@ impl<B : Backend > Drawable<B> for ConnectionsComponent {
     }
 }
 
+
+
+#[async_trait]
 impl Component for ConnectionsComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.scroll_down {
             self.next_connection(1);
             return Ok(EventState::Consumed);
@@ -134,6 +151,13 @@ impl Component for ConnectionsComponent {
         } else if key == self.key_config.scroll_to_bottom {
             self.scroll_to_bottom();
             return Ok(EventState::Consumed);
+        } else if key == self.key_config.enter {
+            if let Some(conn) = self.selected_connection() {
+                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(Some(conn.clone()))));
+                return Ok(EventState::Consumed);
+            } else {
+                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(None)));
+            }
         }
         Ok(EventState::NotConsumed)
     }

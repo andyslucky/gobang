@@ -1,4 +1,7 @@
+use std::ops::Deref;
+
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
     Frame,
@@ -7,12 +10,14 @@ use tui::{
 
 use database_tree::{Database, Table as DTable};
 
+use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 use crate::clipboard::copy_to_clipboard;
 use crate::components::{Drawable, TableComponent, TableFilterComponent};
 use crate::components::command::CommandInfo;
-use crate::components::databases::{DatabaseEvent, DatabaseMessageObserver};
+use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
+use crate::database::Pool;
 use crate::event::Key;
 
 use super::{Component, EventState};
@@ -27,6 +32,7 @@ pub struct RecordTableComponent {
     pub table: TableComponent,
     pub focus: Focus,
     key_config: KeyConfig,
+    shared_pool : SharedPool
 }
 
 impl<B: Backend> Drawable<B> for RecordTableComponent {
@@ -45,18 +51,6 @@ impl<B: Backend> Drawable<B> for RecordTableComponent {
     }
 }
 
-impl DatabaseMessageObserver for RecordTableComponent {
-    fn handle_message(&mut self, message: &DatabaseEvent) -> Result<()> {
-       match message {
-           DatabaseEvent::TableSelected(_, _) => {
-               self.reset();
-               // TODO: implmenet rest of logic!
-           }
-       }
-        Ok(())
-    }
-}
-
 impl<B : Backend> Tab<B> for RecordTableComponent {
     fn tab_type(&self) -> TabType {
         TabType::Records
@@ -70,16 +64,17 @@ impl<B : Backend> Tab<B> for RecordTableComponent {
 }
 
 impl RecordTableComponent {
-    pub fn new(key_config: KeyConfig) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
         Self {
             filter: TableFilterComponent::new(key_config.clone()),
             table: TableComponent::new(key_config.clone()),
             focus: Focus::Table,
             key_config,
+            shared_pool
         }
     }
 
-    pub fn update(
+    fn update_table(
         &mut self,
         rows: Vec<Vec<String>>,
         headers: Vec<String>,
@@ -100,12 +95,13 @@ impl RecordTableComponent {
     }
 }
 
+#[async_trait]
 impl Component for RecordTableComponent {
     fn commands(&self, out: &mut Vec<CommandInfo>) {
         self.table.commands(out)
     }
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.copy {
             if let Some(text) = self.table.selected_cells() {
                 copy_to_clipboard(text.as_str())?
@@ -115,11 +111,37 @@ impl Component for RecordTableComponent {
             self.focus = Focus::Filter;
             return Ok(EventState::Consumed);
         }
-        match key {
-            key if matches!(self.focus, Focus::Filter) => return self.filter.event(key),
-            key if matches!(self.focus, Focus::Table) => return self.table.event(key),
-            _ => (),
+
+        return match self.focus {
+            Focus::Table => {
+                self.table.event(key, message_queue).await
+            }
+            Focus::Filter => {
+                self.filter.event(key, message_queue).await
+            }
+        };
+    }
+
+    async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        for m in messages.iter() {
+            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
+                match db_event {
+                    DatabaseEvent::TableSelected(database, table) => {
+                        self.reset();
+                        let mut headers : Vec<String> = vec![];
+                        let mut records : Vec<Vec<String>> = vec![];
+                        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+                            let res = pool
+                                .get_records(&database, &table, 0, None)
+                                .await?;
+                            headers = res.0;
+                            records = res.1;
+                        }
+                        self.update_table(records, headers, database.clone(), table.clone());
+                    }
+                }
+            }
         }
-        Ok(EventState::NotConsumed)
+        Ok(())
     }
 }

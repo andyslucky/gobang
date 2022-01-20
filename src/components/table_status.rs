@@ -11,6 +11,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use async_trait::async_trait;
+use crate::app::GlobalMessageQueue;
 
 pub struct TableStatusComponent {
     column_count: Option<usize>,
@@ -70,10 +72,11 @@ impl DrawableComponent for TableStatusComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableStatusComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, _key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         Ok(EventState::NotConsumed)
     }
 }
