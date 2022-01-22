@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use anyhow::Result;
 use async_trait::async_trait;
 use tui::{
@@ -9,7 +7,6 @@ use tui::{
 };
 
 use database_tree::{Database, Table as DTable};
-
 use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 use crate::clipboard::copy_to_clipboard;
 use crate::components::{Drawable, TableComponent, TableFilterComponent};
@@ -17,8 +14,7 @@ use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
-use crate::database::Pool;
-use crate::event::Key;
+use crate::Key;
 
 use super::{Component, EventState};
 
@@ -74,24 +70,30 @@ impl RecordTableComponent {
         }
     }
 
-    fn update_table(
+    async fn update_table(
         &mut self,
-        rows: Vec<Vec<String>>,
-        headers: Vec<String>,
         database: Database,
         table: DTable,
-    ) {
+    ) -> Result<()> {
+
+        let mut headers : Vec<String> = vec![];
+        let mut rows : Vec<Vec<String>> = vec![];
+        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+            let filter = self.filter.input_str();
+            let res = pool
+                .get_records(&database, &table, 0, if filter.is_empty() {None} else {Some(filter)})
+                .await?;
+            headers = res.0;
+            rows = res.1;
+        }
         self.table.update(rows, headers, database, table.clone());
         self.filter.table = Some(table);
+        Ok(())
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.table.reset();
         self.filter.reset();
-    }
-
-    pub fn filter_focused(&self) -> bool {
-        matches!(self.focus, Focus::Filter)
     }
 }
 
@@ -101,7 +103,7 @@ impl Component for RecordTableComponent {
         self.table.commands(out)
     }
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(&mut self, key: Key, message_queue: &mut GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.copy {
             if let Some(text) = self.table.selected_cells() {
                 copy_to_clipboard(text.as_str())?
@@ -128,20 +130,12 @@ impl Component for RecordTableComponent {
                 match db_event {
                     DatabaseEvent::TableSelected(database, table) => {
                         self.reset();
-                        let mut headers : Vec<String> = vec![];
-                        let mut records : Vec<Vec<String>> = vec![];
-                        if let Some(pool) = self.shared_pool.read().await.as_ref() {
-                            let res = pool
-                                .get_records(&database, &table, 0, None)
-                                .await?;
-                            headers = res.0;
-                            records = res.1;
-                        }
-                        self.update_table(records, headers, database.clone(), table.clone());
+                        self.update_table(database.clone(), table.clone()).await?;
                     }
                 }
             }
         }
+        // TODO : Add filter message handling
         Ok(())
     }
 }

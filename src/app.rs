@@ -11,7 +11,7 @@ use tui::{
 use crate::{
     components::{
         command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent,
-        PropertiesComponent, RecordTableComponent, SqlEditorComponent, TabToolbar
+         RecordTableComponent, SqlEditorComponent, TabToolbar
     },
     components::tab::TabType,
     config::Config,
@@ -168,29 +168,6 @@ impl<B : Backend> App<B> {
         }
     }
 
-    async fn update_record_table(&mut self) -> anyhow::Result<()> {
-        // if let Some((database, table)) = self.databases.tree().selected_table() {
-        //     let (headers, records) = self
-        //         .pool
-        //         .as_ref()
-        //         .unwrap()
-        //         .get_records(
-        //             &database,
-        //             &table,
-        //             0,
-        //             if self.record_table.filter.input_str().is_empty() {
-        //                 None
-        //             } else {
-        //                 Some(self.record_table.filter.input_str())
-        //             },
-        //         )
-        //         .await?;
-        //     self.record_table
-        //         .update(records, headers, database.clone(), table.clone());
-        // }
-        Ok(())
-    }
-
     pub async fn event(&mut self, key: Key) -> anyhow::Result<EventState> {
         self.update_commands();
         let mut result : anyhow::Result<EventState> = Ok(EventState::NotConsumed);
@@ -282,21 +259,6 @@ impl<B : Backend> App<B> {
                 }
                 // match self.tab.selected_tab {
                 //     TabType::Records => {
-                //         if self.record_table.event(key)?.is_consumed() {
-                //             return Ok(EventState::Consumed);
-                //         };
-                //
-                //         if key == self.config.key_config.copy {
-                //             if let Some(text) = self.record_table.table.selected_cells() {
-                //                 copy_to_clipboard(text.as_str())?
-                //             }
-                //         }
-                //
-                //         if key == self.config.key_config.enter && self.record_table.filter_focused()
-                //         {
-                //             self.record_table.focus = crate::components::record_table::Focus::Table;
-                //             self.update_record_table().await?;
-                //         }
                 //
                 //         if self.record_table.table.eod {
                 //             return Ok(EventState::Consumed);
@@ -331,22 +293,6 @@ impl<B : Backend> App<B> {
                 //             }
                 //         };
                 //     }
-                //     TabType::Sql => {
-                //         if self.sql_editor.event(key)?.is_consumed()
-                //             || self
-                //                 .sql_editor
-                //                 .async_event(key, self.pool.as_ref().unwrap())
-                //                 .await?
-                //                 .is_consumed()
-                //         {
-                //             return Ok(EventState::Consumed);
-                //         };
-                //     }
-                //     TabType::Properties => {
-                //         if self.properties.event(key)?.is_consumed() {
-                //             return Ok(EventState::Consumed);
-                //         };
-                //     }
                 // };
             }
         }
@@ -366,7 +312,7 @@ impl<B : Backend> App<B> {
                 .extend_or_shorten_widget_width_to_left
         {
             self.left_main_chunk_percentage =
-                self.left_main_chunk_percentage.saturating_sub(5).max(15);
+                self.left_main_chunk_percentage.saturating_sub(5).max(0);
             return Ok(EventState::Consumed);
         } else if key
             == self
