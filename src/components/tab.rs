@@ -14,7 +14,7 @@ use tui::{
 use tui::layout::{Constraint, Direction, Layout};
 use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 
-use crate::components::{Drawable, PropertiesComponent, RecordTableComponent, SqlEditorComponent};
+use crate::components::{Drawable, handle_message, PropertiesComponent, RecordTableComponent, SqlEditorComponent};
 use crate::components::command::{self, CommandInfo};
 use crate::components::connections::ConnectionEvent;
 use crate::components::databases::{DatabaseEvent};
@@ -182,23 +182,9 @@ impl<B : Backend> Component for TabPanel<B> {
         use futures::future::join_all;
         // use crate::components::handle_message;
         for m in messages.iter() {
-            // handle_message!(m,DatabaseEvent,{
-            //     DatabaseEvent::TableSelected(_,_) => self.toolbar.selected_tab_index = 0
-            // });
-            // handle_message!(m,ConnectionEvent,{
-            //     ConnectionEvent::ConnectionChanged(c) => self.toolbar.selected_tab_index = 0;
-            // });
-
-            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
-                match db_event {
-                    DatabaseEvent::TableSelected(_, _) => {
-                        self.toolbar.selected_tab_index = 0;
-                    },
-                    _ => ()
-                }
-            } else if let Some(conn_event) = m.as_any().downcast_ref::<ConnectionEvent>() {
-
-            }
+            handle_message!(m,DatabaseEvent,
+                DatabaseEvent::TableSelected(_,_) => {self.toolbar.selected_tab_index = 0;}
+            );
         }
         // pass to children
         return join_all(self.tab_components.iter_mut().map(|t| t.handle_messages(messages)))

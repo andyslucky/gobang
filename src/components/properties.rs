@@ -12,7 +12,7 @@ use database_tree::{Database, Table};
 
 use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, TableComponent};
+use crate::components::{Drawable, handle_message, TableComponent};
 use crate::components::command::{self, CommandInfo};
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
@@ -224,14 +224,12 @@ impl Component for PropertiesComponent {
     }
     async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
         for m in messages.iter() {
-            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
-                match db_event {
-                    DatabaseEvent::TableSelected(database, table) => {
+            handle_message!(m, DatabaseEvent,
+                DatabaseEvent::TableSelected(database,table) => {
                         self.reset();
                         self.update(database.clone(), table.clone()).await?;
-                    }
                 }
-            }
+            );
         }
         Ok(())
     }

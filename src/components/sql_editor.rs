@@ -325,6 +325,5 @@ impl Component for SqlEditorComponent {
                 return self.table.event(key, message_queue).await;
             }
         }
-        Ok(EventState::NotConsumed)
     }
 }

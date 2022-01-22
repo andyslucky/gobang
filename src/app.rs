@@ -193,25 +193,18 @@ impl<B : Backend> App<B> {
     }
 
     async fn handle_messages(&mut self, messages : &mut Vec<Box<dyn AppMessage>>) -> anyhow::Result<()>{
+        use crate::components::handle_message;
         for m in messages.iter() {
-            if let Some(conn_event) = m.as_any().downcast_ref::<ConnectionEvent>() {
-                match conn_event {
-                    ConnectionEvent::ConnectionChanged(conn_opt) => {
-                        if let Some(conn)  = conn_opt {
-                            self.on_conn_changed(conn).await;
-                        }
-                        // self.on_conn_changed(conn_opt).await;
+            handle_message!(m, ConnectionEvent,
+                ConnectionEvent::ConnectionChanged(conn_opt) => {
+                    if let Some(conn) = conn_opt {
+                        self.on_conn_changed(conn).await;
                     }
                 }
-            }
-
-            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
-                match db_event {
-                    DatabaseEvent::TableSelected(_, _) => {
-                        self.focus = Focus::TabPanel;
-                    }
-                }
-            }
+            );
+            handle_message!(m, DatabaseEvent,
+                DatabaseEvent::TableSelected(_,_) => {self.focus = Focus::TabPanel;}
+            )
         }
         Ok(())
     }

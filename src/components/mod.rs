@@ -16,17 +16,18 @@ pub mod table_value;
 pub mod utils;
 
 
-// macro_rules! handle_message {
-//     ($message : expr, $msg_type : ident, $body : tt) => {
-//         if let Some(e) = $message.as_any().downcast_ref::<$msg_type>() {
-//                 match e {
-//                     $body,
-//                     _ => ()
-//                 }
-//         }
-//     }
-// }
-// pub(crate) use handle_message;
+macro_rules! handle_message {
+    ($message : expr, $msg_type : ty, $($p : pat => $expr :expr),+) => {
+        if let Some(e) = $message.as_any().downcast_ref::<$msg_type>() {
+            #[allow(unreachable_patterns)]
+                match e {
+                    $($p => $expr,)+
+                    _ => ()
+                }
+        }
+    };
+}
+pub(crate) use handle_message;
 #[cfg(debug_assertions)]
 pub mod debug;
 

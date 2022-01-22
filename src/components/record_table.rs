@@ -7,9 +7,10 @@ use tui::{
 };
 
 use database_tree::{Database, Table as DTable};
+
 use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, TableComponent, TableFilterComponent};
+use crate::components::{Drawable, handle_message, TableComponent, TableFilterComponent};
 use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
@@ -126,14 +127,12 @@ impl Component for RecordTableComponent {
 
     async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
         for m in messages.iter() {
-            if let Some(db_event) = m.as_any().downcast_ref::<DatabaseEvent>() {
-                match db_event {
-                    DatabaseEvent::TableSelected(database, table) => {
-                        self.reset();
-                        self.update_table(database.clone(), table.clone()).await?;
-                    }
+            handle_message!(m, DatabaseEvent,
+                DatabaseEvent::TableSelected(database,table) => {
+                    self.reset();
+                    self.update_table(database.clone(), table.clone()).await?;
                 }
-            }
+            );
         }
         // TODO : Add filter message handling
         Ok(())
