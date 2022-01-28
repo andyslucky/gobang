@@ -1,16 +1,15 @@
-use super::{Component, DrawableComponent, EventState};
-use crate::components::command::CommandInfo;
-use crate::config::KeyConfig;
-use crate::event::Key;
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::{Alignment, Rect},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
-use crate::app::GlobalMessageQueue;
+use crate::components::command::CommandInfo;
+use crate::config::KeyConfig;
+
+use super::{Component, DrawableComponent, EventState};
 
 pub struct DebugComponent {
     msg: String,
@@ -55,7 +54,7 @@ impl DrawableComponent for DebugComponent {
 impl Component for DebugComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if self.visible {
             if key == self.key_config.exit_popup {
                 self.msg = String::new();

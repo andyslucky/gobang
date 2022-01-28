@@ -16,6 +16,8 @@ members=[
 ]
 
 [dependencies]
+log4rs = {version = "1.0.0", features = ["file_appender"]}
+log = "0.4.14"
 tui = { version = "0.15.0", features = ["crossterm"], default-features = false }
 crossterm = "0.20"
 anyhow = "1.0.38"

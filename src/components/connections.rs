@@ -1,21 +1,24 @@
 use std::any::Any;
-use super::{Component, EventState};
-use crate::components::command::CommandInfo;
-use crate::config::{Connection, KeyConfig};
-use crate::event::Key;
-use async_trait::async_trait;
+
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
-    Frame,
 };
-use crate::app::{AppMessage, GlobalMessageQueue};
-use crate::components::databases::DatabaseEvent;
+
+use crate::app::{AppMessage};
+use crate::components::command::CommandInfo;
+
 use crate::components::Drawable;
+use crate::config::{Connection, KeyConfig};
+
+
+use super::{Component, EventState};
 
 pub enum ConnectionEvent {
     ConnectionChanged(Option<Connection>),

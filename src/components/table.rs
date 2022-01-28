@@ -1,28 +1,28 @@
+use std::convert::From;
+
+use anyhow::Result;
+use async_trait::async_trait;
+use tui::{
+    backend::Backend,
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, Cell, Row, Table, TableState},
+};
+use unicode_width::UnicodeWidthStr;
+use database_tree::{Database, Table as DTable};
+use crate::components::command::{self, CommandInfo};
+use crate::components::Drawable;
+use crate::config::KeyConfig;
+
 use super::{
-    utils::scroll_vertical::VerticalScroll,
     Component,
     DrawableComponent,
     EventState,
     TableStatusComponent,
-    TableValueComponent
+    TableValueComponent,
+    utils::scroll_vertical::VerticalScroll
 };
-use async_trait::async_trait;
-use crate::components::command::{self, CommandInfo};
-use crate::config::KeyConfig;
-use crate::event::Key;
-use anyhow::Result;
-use database_tree::{Database, Table as DTable};
-use std::convert::From;
-use tui::{
-    backend::Backend,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Cell, Row, Table, TableState},
-    Frame,
-};
-use unicode_width::UnicodeWidthStr;
-use crate::app::GlobalMessageQueue;
-use crate::components::Drawable;
 
 pub struct TableComponent {
     pub headers: Vec<String>,
@@ -532,7 +532,7 @@ impl Component for TableComponent {
         )));
     }
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.scroll_left {
             self.previous_column();
             return Ok(EventState::Consumed);
@@ -576,8 +576,9 @@ impl Component for TableComponent {
 
 #[cfg(test)]
 mod test {
-    use super::{KeyConfig, TableComponent};
     use tui::layout::Constraint;
+
+    use super::{KeyConfig, TableComponent};
 
     #[test]
     fn test_headers() {

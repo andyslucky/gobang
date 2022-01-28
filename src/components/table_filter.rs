@@ -1,23 +1,24 @@
-use super::{
-    compute_character_width, CompletionComponent, Component, EventState, MovableComponent
-};
-use async_trait::async_trait;
-use crate::components::command::CommandInfo;
-use crate::config::KeyConfig;
-use crate::event::Key;
 use anyhow::Result;
-use database_tree::Table;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
-use crate::app::GlobalMessageQueue;
+
+use database_tree::Table;
+use crate::components::command::CommandInfo;
 use crate::components::Drawable;
+use crate::config::KeyConfig;
+use crate::event::Key;
+
+use super::{
+    CompletionComponent, Component, compute_character_width, EventState, MovableComponent
+};
 
 pub struct TableFilterComponent {
     key_config: KeyConfig,

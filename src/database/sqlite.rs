@@ -1,13 +1,16 @@
-use crate::get_or_null;
-
-use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
-use async_trait::async_trait;
-use chrono::NaiveDateTime;
-use database_tree::{Child, Database, Table};
-use futures::TryStreamExt;
-use sqlx::sqlite::{SqliteColumn, SqlitePoolOptions, SqliteRow};
-use sqlx::{Column as _, Row as _, TypeInfo as _};
 use std::time::Duration;
+
+use async_trait::async_trait;
+use futures::TryStreamExt;
+use sqlx::{Column as _, Row as _};
+use sqlx::sqlite::{SqlitePoolOptions};
+
+use database_tree::{Child, Database, Table};
+
+use crate::database::convert_column_val_to_str;
+use crate::pool_exec_impl;
+
+use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
 
 pub struct SqlitePool {
     pool: sqlx::sqlite::SqlitePool,
@@ -151,44 +154,7 @@ impl TableRow for Index {
 #[async_trait]
 impl Pool for SqlitePool {
     async fn execute(&self, query: &String) -> anyhow::Result<ExecuteResult> {
-        let query = query.trim();
-        if query.to_uppercase().starts_with("SELECT") {
-            let mut rows = sqlx::query(query).fetch(&self.pool);
-            let mut headers = vec![];
-            let mut records = vec![];
-            while let Some(row) = rows.try_next().await? {
-                headers = row
-                    .columns()
-                    .iter()
-                    .map(|column| column.name().to_string())
-                    .collect();
-                let mut new_row = vec![];
-                for column in row.columns() {
-                    new_row.push(convert_column_value_to_string(&row, column)?)
-                }
-                records.push(new_row)
-            }
-            return Ok(ExecuteResult::Read {
-                headers,
-                rows: records,
-                database: Database {
-                    name: "-".to_string(),
-                    children: Vec::new(),
-                },
-                table: Table {
-                    name: "-".to_string(),
-                    create_time: None,
-                    update_time: None,
-                    engine: None,
-                    schema: None,
-                },
-            });
-        }
-
-        let result = sqlx::query(query).execute(&self.pool).await?;
-        Ok(ExecuteResult::Write {
-            updated_rows: result.rows_affected(),
-        })
+        pool_exec_impl!(&self.pool, query);
     }
 
     async fn get_databases(&self) -> anyhow::Result<Vec<Database>> {
@@ -258,7 +224,7 @@ impl Pool for SqlitePool {
                 .collect();
             let mut new_row = vec![];
             for column in row.columns() {
-                new_row.push(convert_column_value_to_string(&row, column)?)
+                new_row.push(convert_column_val_to_str(&row, column)?)
             }
             records.push(new_row)
         }
@@ -380,52 +346,5 @@ impl Pool for SqlitePool {
 
     async fn close(&self) {
         self.pool.close().await;
-    }
-}
-
-fn convert_column_value_to_string(
-    row: &SqliteRow,
-    column: &SqliteColumn,
-) -> anyhow::Result<String> {
-    let column_name = column.name();
-    if let Ok(value) = row.try_get(column_name) {
-        let value: Option<String> = value;
-        Ok(value.unwrap_or_else(|| "NULL".to_string()))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<&str> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<i16> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<i32> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<i64> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<f32> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<f64> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<chrono::DateTime<chrono::Utc>> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<chrono::DateTime<chrono::Local>> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<NaiveDateTime> = value;
-        Ok(get_or_null!(value))
-    } else if let Ok(value) = row.try_get(column_name) {
-        let value: Option<bool> = value;
-        Ok(get_or_null!(value))
-    } else {
-        anyhow::bail!(
-            "column type not implemented: `{}` {}",
-            column_name,
-            column.type_info().clone().name()
-        )
     }
 }

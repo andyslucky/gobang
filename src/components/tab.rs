@@ -1,7 +1,5 @@
-use std::any::Any;
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
 use strum_macros::EnumIter;
 use tui::{
     backend::Backend,
@@ -12,17 +10,16 @@ use tui::{
     widgets::{Block, Borders, Tabs},
 };
 use tui::layout::{Constraint, Direction, Layout};
-use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 
-use crate::components::{Drawable, handle_message, PropertiesComponent, RecordTableComponent, SqlEditorComponent};
-use crate::components::command::{self, CommandInfo};
-use crate::components::connections::ConnectionEvent;
-use crate::components::databases::{DatabaseEvent};
+use crate::app::{AppMessage, SharedPool};
+use crate::components::{Drawable, PropertiesComponent, RecordTableComponent, SqlEditorComponent};
+use crate::components::command::{CommandInfo};
+use crate::components::databases::DatabaseEvent;
 use crate::components::EventState::{Consumed, NotConsumed};
 use crate::config::Config;
 use crate::config::KeyConfig;
-use crate::database::Pool;
 use crate::event::Key;
+use crate::handle_message;
 
 use super::{Component, DrawableComponent, EventState};
 
@@ -88,7 +85,7 @@ impl DrawableComponent for TabToolbar {
 impl Component for TabToolbar {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if let Key::Char(c) = key {
             if c.is_digit(10) {
                 let tab_number = c.to_digit(10).unwrap() as usize;
@@ -151,7 +148,7 @@ impl<B: Backend> Drawable<B> for TabPanel<B> {
 
 #[async_trait]
 impl<B : Backend> Component for TabPanel<B> {
-    fn commands(&self, out: &mut Vec<CommandInfo>) {
+    fn commands(&self, _out: &mut Vec<CommandInfo>) {
 
     }
     async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {

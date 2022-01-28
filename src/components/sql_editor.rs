@@ -11,12 +11,12 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{GlobalMessageQueue, SharedPool};
 use crate::components::command::CommandInfo;
-use crate::components::databases::DatabaseEvent;
+
 use crate::components::Drawable;
 use crate::components::EventState::NotConsumed;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
-use crate::database::{ExecuteResult, Pool};
+use crate::database::ExecuteResult;
 use crate::event::Key;
 use crate::ui::stateful_paragraph::{ParagraphState, StatefulParagraph};
 
@@ -205,9 +205,9 @@ impl SqlEditorComponent {
                 }
                 return Ok(EventState::Consumed);
             },
-            Key::F10 => {
+            Key::F5 => {
                     let query : String = self.input.iter().collect();
-                    self.update_table(query).await?;
+                    self.execute_query(query).await?;
                     return Ok(EventState::Consumed);
             },
             _ => ()
@@ -215,7 +215,7 @@ impl SqlEditorComponent {
         Ok(NotConsumed)
     }
 
-    async fn update_table(&mut self, query: String) -> Result<()> {
+    async fn execute_query(&mut self, query: String) -> Result<()> {
         if let Some(pool) = self.shared_pool.read().await.as_ref() {
             let result = pool.execute(&query).await?;
             match result {
@@ -313,16 +313,16 @@ impl Component for SqlEditorComponent {
         //     return self.complete();
         // }
 
-        match self.focus {
+        return match self.focus {
             Focus::Editor => {
-                return self.editor_key_event(key,message_queue).await;
+                self.editor_key_event(key, message_queue).await
             }
             Focus::Table => {
                 if key == self.key_config.focus_above {
                     self.focus = Focus::Editor;
                     return Ok(EventState::Consumed);
                 }
-                return self.table.event(key, message_queue).await;
+                self.table.event(key, message_queue).await
             }
         }
     }

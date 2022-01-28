@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Result};
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
 use std::ffi::OsStr;
 use std::io::Write;
 use std::process::{Command, Stdio};
+
+use anyhow::{anyhow, Result};
 
 fn execute_copy_command(command: Command, text: &str) -> Result<()> {
     let mut command = command;

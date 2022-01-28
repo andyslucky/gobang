@@ -1,3 +1,30 @@
+use std::convert::TryInto;
+
+use anyhow::Result;
+use async_trait::async_trait;
+use tui::{backend::Backend, Frame, layout::Rect};
+use unicode_width::UnicodeWidthChar;
+
+pub use command::{CommandInfo, CommandText};
+pub use completion::CompletionComponent;
+pub use connections::ConnectionsComponent;
+pub use database_filter::DatabaseFilterComponent;
+pub use databases::DatabasesComponent;
+#[cfg(debug_assertions)]
+pub use debug::DebugComponent;
+pub use error::ErrorComponent;
+pub use help::HelpComponent;
+pub use properties::PropertiesComponent;
+pub use record_table::RecordTableComponent;
+pub use sql_editor::SqlEditorComponent;
+pub use tab::TabToolbar;
+pub use table::TableComponent;
+pub use table_filter::TableFilterComponent;
+pub use table_status::TableStatusComponent;
+pub use table_value::TableValueComponent;
+
+use crate::app::{AppMessage};
+
 pub mod command;
 pub mod completion;
 pub mod connections;
@@ -15,7 +42,7 @@ pub mod table_status;
 pub mod table_value;
 pub mod utils;
 
-
+#[macro_export]
 macro_rules! handle_message {
     ($message : expr, $msg_type : ty, $($p : pat => $expr :expr),+) => {
         if let Some(e) = $message.as_any().downcast_ref::<$msg_type>() {
@@ -27,37 +54,8 @@ macro_rules! handle_message {
         }
     };
 }
-pub(crate) use handle_message;
 #[cfg(debug_assertions)]
 pub mod debug;
-
-pub use command::{CommandInfo, CommandText};
-pub use completion::CompletionComponent;
-pub use connections::ConnectionsComponent;
-pub use database_filter::DatabaseFilterComponent;
-pub use databases::DatabasesComponent;
-pub use error::ErrorComponent;
-pub use help::HelpComponent;
-pub use properties::PropertiesComponent;
-pub use record_table::RecordTableComponent;
-pub use sql_editor::SqlEditorComponent;
-pub use tab::TabToolbar;
-pub use table::TableComponent;
-pub use table_filter::TableFilterComponent;
-pub use table_status::TableStatusComponent;
-pub use table_value::TableValueComponent;
-
-#[cfg(debug_assertions)]
-pub use debug::DebugComponent;
-
-use crate::database::Pool;
-use anyhow::Result;
-use async_trait::async_trait;
-use std::convert::TryInto;
-use tui::{backend::Backend, layout::Rect, Frame};
-use unicode_width::UnicodeWidthChar;
-use crate::app::{AppMessage, GlobalMessageQueue};
-use crate::Key;
 
 #[derive(PartialEq, Debug)]
 pub enum EventState {
@@ -109,18 +107,9 @@ pub trait Component {
 
     async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState>;
 
-    async fn handle_messages(&mut self, messages : &Vec<Box<dyn AppMessage>>) -> Result<()> {Ok(())}
+    async fn handle_messages(&mut self, _messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {Ok(())}
 
     fn reset(&mut self){}
-
-    #[deprecated]
-    async fn async_event(
-        &mut self,
-        _key: crate::event::Key,
-        _pool: &Box<dyn Pool>,
-    ) -> Result<EventState> {
-        Ok(EventState::NotConsumed)
-    }
 
     fn focused(&self) -> bool {
         false

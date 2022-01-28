@@ -10,12 +10,13 @@ use database_tree::{Database, Table as DTable};
 
 use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, handle_message, TableComponent, TableFilterComponent};
+use crate::components::{Drawable, TableComponent, TableFilterComponent};
 use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
+use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
-use crate::Key;
+use crate::{handle_message, Key};
 
 use super::{Component, EventState};
 
@@ -128,7 +129,7 @@ impl Component for RecordTableComponent {
     async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
         for m in messages.iter() {
             handle_message!(m, DatabaseEvent,
-                DatabaseEvent::TableSelected(database,table) => {
+                TableSelected(database,table) => {
                     self.reset();
                     self.update_table(database.clone(), table.clone()).await?;
                 }

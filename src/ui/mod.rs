@@ -1,6 +1,7 @@
+use database_tree::MoveSelection;
+
 use crate::config::KeyConfig;
 use crate::event::Key;
-use database_tree::MoveSelection;
 
 pub mod reflow;
 pub mod scrollbar;

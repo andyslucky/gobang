@@ -10,15 +10,15 @@ use tui::{
 
 use database_tree::{Database, Table};
 
-use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
+use crate::app::{AppMessage, SharedPool};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, handle_message, TableComponent};
+use crate::components::{Drawable, TableComponent};
 use crate::components::command::{self, CommandInfo};
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
-use crate::database::{Pool, TableRow};
-use crate::event::Key;
+use crate::database::{TableRow};
+use crate::handle_message;
 
 use super::{Component, EventState};
 

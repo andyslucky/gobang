@@ -15,11 +15,10 @@ use tui::{
 
 use database_tree::{Database, DatabaseTree, DatabaseTreeItem, Table};
 
-use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
+use crate::app::{AppMessage, SharedPool};
 use crate::components::command::{self, CommandInfo};
 use crate::components::connections::ConnectionEvent;
 use crate::config::{Connection, KeyConfig};
-use crate::database::Pool;
 use crate::event::Key;
 use crate::ui::common_nav;
 use crate::ui::scrolllist::draw_list_block;
@@ -74,22 +73,18 @@ impl DatabasesComponent {
     }
 
     async fn update(&mut self, conn_opt: &Option<Connection>) -> Result<()> {
-        // TODO: fix update block
         let mut databases: Vec<Database> = vec![];
-        if let Some(pool_r_lock) = self.shared_pool.try_read().ok(){
-            if let Some(pool) = pool_r_lock.as_ref() {
-                if let Some(connection) = conn_opt {
-                    databases = match &connection.database {
-                        Some(database) => vec![Database::new(
-                            database.clone(),
-                            pool.get_tables(database.clone()).await?,
-                        )],
-                        None => pool.get_databases().await?,
-                    };
-                }
+        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+            if let Some(connection) = conn_opt {
+                databases = match &connection.database {
+                    Some(database) => vec![Database::new(
+                        database.clone(),
+                        pool.get_tables(database.clone()).await?,
+                    )],
+                    None => pool.get_databases().await?,
+                };
             }
         }
-
         self.tree = DatabaseTree::new(databases.as_slice(), &BTreeSet::new())?;
         self.filterd_tree = None;
         self.filter.reset();

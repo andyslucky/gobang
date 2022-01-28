@@ -1,16 +1,14 @@
-use std::convert::TryInto;
-use crate::log::LogLevel;
-use crate::Key;
-use serde::Deserialize;
+
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use structopt::StructOpt;
 
+use serde::Deserialize;
 #[cfg(test)]
 use serde::Serialize;
-use crate::database::{MySqlPool, Pool, PostgresPool, SqlitePool};
+use structopt::StructOpt;
+use crate::Key;
 
 #[derive(StructOpt, Debug)]
 pub struct CliConfig {
@@ -23,9 +21,7 @@ pub struct CliConfig {
 pub struct Config {
     pub conn: Vec<Connection>,
     #[serde(default)]
-    pub key_config: KeyConfig,
-    #[serde(default)]
-    pub log_level: LogLevel,
+    pub key_config: KeyConfig
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -62,7 +58,6 @@ impl Default for Config {
                 database: None,
             }],
             key_config: KeyConfig::default(),
-            log_level: LogLevel::default(),
         }
     }
 }
@@ -329,9 +324,11 @@ fn expand_path(path: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod test {
-    use super::{expand_path, KeyConfig, Path, PathBuf};
-    use serde_json::Value;
     use std::env;
+
+    use serde_json::Value;
+
+    use super::{expand_path, KeyConfig, Path, PathBuf};
 
     #[test]
     fn test_overlappted_key() {

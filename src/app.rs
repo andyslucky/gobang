@@ -1,22 +1,16 @@
 use std::any::Any;
-use std::sync::{Arc};
-use tokio::sync::RwLock;
+use std::sync::Arc;
 
+use tokio::sync::RwLock;
 use tui::{
     backend::Backend,
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use crate::{
-    components::{
-        command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent,
-         RecordTableComponent, SqlEditorComponent, TabToolbar
-    },
-    components::tab::TabType,
-    config::Config,
-};
-use crate::clipboard::copy_to_clipboard;
+use crate::{components::{
+    command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent
+}, config::Config, handle_message};
 use crate::components::{
     CommandInfo, Component as _, Drawable, DrawableComponent as _, EventState
 };
@@ -24,7 +18,7 @@ use crate::components::connections::ConnectionEvent;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::TabPanel;
 use crate::config::Connection;
-use crate::database::{MySqlPool, Pool, PostgresPool, RECORDS_LIMIT_PER_PAGE, SqlitePool};
+use crate::database::{MySqlPool, Pool, PostgresPool, SqlitePool};
 use crate::event::Key;
 
 pub type SharedPool = Arc<RwLock<Option<Box<dyn Pool>>>>;
@@ -153,16 +147,16 @@ impl<B : Backend> App<B> {
     }
 
     async fn get_pool_from_conn(&mut self, conn: &Connection) -> anyhow::Result<Box<dyn Pool>> {
-        if conn.is_mysql() {
-            return Ok(Box::new(
+        return if conn.is_mysql() {
+            Ok(Box::new(
                 MySqlPool::new(conn.database_url()?.as_str()).await?,
             ))
         } else if conn.is_postgres() {
-            return Ok(Box::new(
+            Ok(Box::new(
                 PostgresPool::new(conn.database_url()?.as_str()).await?,
             ))
         } else {
-            return Ok(Box::new(
+            Ok(Box::new(
                 SqlitePool::new(conn.database_url()?.as_str()).await?,
             ))
         }
@@ -193,7 +187,7 @@ impl<B : Backend> App<B> {
     }
 
     async fn handle_messages(&mut self, messages : &mut Vec<Box<dyn AppMessage>>) -> anyhow::Result<()>{
-        use crate::components::handle_message;
+
         for m in messages.iter() {
             handle_message!(m, ConnectionEvent,
                 ConnectionEvent::ConnectionChanged(conn_opt) => {
@@ -250,6 +244,7 @@ impl<B : Backend> App<B> {
                 if self.tab_panel.event(key, &mut self.message_queue).await?.is_consumed() {
                     return Ok(EventState::Consumed)
                 }
+                // TODO: Reimplement this section in the records tab
                 // match self.tab.selected_tab {
                 //     TabType::Records => {
                 //
@@ -350,6 +345,7 @@ impl<B : Backend> App<B> {
 
 #[cfg(test)]
 mod test {
+    #[allow(unused_imports)]
     use super::{App, Config, EventState, Key};
 
     #[test]
