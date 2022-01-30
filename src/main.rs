@@ -5,6 +5,7 @@ use crossterm::{
     ExecutableCommand,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use log::{error};
 use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::app::App;
@@ -39,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         terminal.draw(|f| {
             if let Err(err) = app.draw(f) {
-                log::error!("error: {}", err.to_string());
+                error!("error: {}", err);
                 std::process::exit(1);
             }
         })?;
@@ -52,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
                         break;
                     }
                 }
-                Err(err) => app.error.set(err.to_string())?,
+                Err(err) => {
+                    error!("error: {}", err);
+                    app.error.set(err.to_string())?;
+                },
             },
             Event::Tick => (),
         }

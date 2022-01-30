@@ -10,7 +10,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use database_tree::{Child, Database, Schema, Table};
 
 use crate::{pool_exec_impl};
-use crate::database::convert_column_val_to_str;
+use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
 
 use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
 
@@ -26,126 +26,6 @@ impl PostgresPool {
                 .connect(database_url)
                 .await?,
         })
-    }
-}
-
-pub struct Constraint {
-    name: String,
-    column_name: String,
-}
-
-impl TableRow for Constraint {
-    fn fields(&self) -> Vec<String> {
-        vec!["name".to_string(), "column_name".to_string()]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![self.name.to_string(), self.column_name.to_string()]
-    }
-}
-
-pub struct Column {
-    name: Option<String>,
-    r#type: Option<String>,
-    null: Option<String>,
-    default: Option<String>,
-    comment: Option<String>,
-}
-
-impl TableRow for Column {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "type".to_string(),
-            "null".to_string(),
-            "default".to_string(),
-            "comment".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name
-                .as_ref()
-                .map_or(String::new(), |name| name.to_string()),
-            self.r#type
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.null
-                .as_ref()
-                .map_or(String::new(), |null| null.to_string()),
-            self.default
-                .as_ref()
-                .map_or(String::new(), |default| default.to_string()),
-            self.comment
-                .as_ref()
-                .map_or(String::new(), |comment| comment.to_string()),
-        ]
-    }
-}
-
-pub struct ForeignKey {
-    name: Option<String>,
-    column_name: Option<String>,
-    ref_table: Option<String>,
-    ref_column: Option<String>,
-}
-
-impl TableRow for ForeignKey {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "column_name".to_string(),
-            "ref_table".to_string(),
-            "ref_column".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name
-                .as_ref()
-                .map_or(String::new(), |name| name.to_string()),
-            self.column_name
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.ref_table
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.ref_column
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-        ]
-    }
-}
-
-pub struct Index {
-    name: Option<String>,
-    column_name: Option<String>,
-    r#type: Option<String>,
-}
-
-impl TableRow for Index {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "column_name".to_string(),
-            "type".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name
-                .as_ref()
-                .map_or(String::new(), |name| name.to_string()),
-            self.column_name
-                .as_ref()
-                .map_or(String::new(), |column_name| column_name.to_string()),
-            self.r#type
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-        ]
     }
 }
 
@@ -345,6 +225,7 @@ impl Pool for PostgresPool {
             constraints.push(Box::new(Constraint {
                 name: row.try_get("constraint_name")?,
                 column_name: row.try_get("column_name")?,
+                origin: None
             }))
         }
         Ok(constraints)

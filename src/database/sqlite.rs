@@ -7,7 +7,7 @@ use sqlx::sqlite::{SqlitePoolOptions};
 
 use database_tree::{Child, Database, Table};
 
-use crate::database::convert_column_val_to_str;
+use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
 use crate::pool_exec_impl;
 
 use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
@@ -24,130 +24,6 @@ impl SqlitePool {
                 .connect(database_url)
                 .await?,
         })
-    }
-}
-
-pub struct Constraint {
-    name: String,
-    column_name: String,
-    origin: String,
-}
-
-impl TableRow for Constraint {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "column_name".to_string(),
-            "origin".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name.to_string(),
-            self.column_name.to_string(),
-            self.origin.to_string(),
-        ]
-    }
-}
-
-pub struct Column {
-    name: Option<String>,
-    r#type: Option<String>,
-    null: Option<String>,
-    default: Option<String>,
-    comment: Option<String>,
-}
-
-impl TableRow for Column {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "type".to_string(),
-            "null".to_string(),
-            "default".to_string(),
-            "comment".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name
-                .as_ref()
-                .map_or(String::new(), |name| name.to_string()),
-            self.r#type
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.null
-                .as_ref()
-                .map_or(String::new(), |null| null.to_string()),
-            self.default
-                .as_ref()
-                .map_or(String::new(), |default| default.to_string()),
-            self.comment
-                .as_ref()
-                .map_or(String::new(), |comment| comment.to_string()),
-        ]
-    }
-}
-
-pub struct ForeignKey {
-    column_name: Option<String>,
-    ref_table: Option<String>,
-    ref_column: Option<String>,
-}
-
-impl TableRow for ForeignKey {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "column_name".to_string(),
-            "ref_table".to_string(),
-            "ref_column".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.column_name
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.ref_table
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-            self.ref_column
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-        ]
-    }
-}
-
-pub struct Index {
-    name: Option<String>,
-    column_name: Option<String>,
-    r#type: Option<String>,
-}
-
-impl TableRow for Index {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            "name".to_string(),
-            "column_name".to_string(),
-            "type".to_string(),
-        ]
-    }
-
-    fn columns(&self) -> Vec<String> {
-        vec![
-            self.name
-                .as_ref()
-                .map_or(String::new(), |name| name.to_string()),
-            self.column_name
-                .as_ref()
-                .map_or(String::new(), |column_name| column_name.to_string()),
-            self.r#type
-                .as_ref()
-                .map_or(String::new(), |r#type| r#type.to_string()),
-        ]
     }
 }
 
@@ -308,6 +184,7 @@ impl Pool for SqlitePool {
                 column_name: row.try_get("from")?,
                 ref_table: row.try_get("table")?,
                 ref_column: row.try_get("to")?,
+                name : None
             }))
         }
         Ok(foreign_keys)

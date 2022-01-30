@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{Column, Row};
+use sqlx::{Row};
 use sqlx::mysql::MySqlRow;
 use sqlx::postgres::PgRow;
 use sqlx::sqlite::SqliteRow;
@@ -62,11 +62,144 @@ pub enum ExecuteResult {
         updated_rows: u64,
     },
 }
-
-
 pub trait TableRow: std::marker::Send {
     fn fields(&self) -> Vec<String>;
     fn columns(&self) -> Vec<String>;
+}
+
+pub struct Column {
+    name: Option<String>,
+    r#type: Option<String>,
+    null: Option<String>,
+    default: Option<String>,
+    comment: Option<String>,
+}
+
+impl TableRow for Column {
+    fn fields(&self) -> Vec<String> {
+        vec![
+            "name".to_string(),
+            "type".to_string(),
+            "null".to_string(),
+            "default".to_string(),
+            "comment".to_string(),
+        ]
+    }
+
+    fn columns(&self) -> Vec<String> {
+        vec![
+            self.name
+                .as_ref()
+                .map_or(String::new(), |name| name.to_string()),
+            self.r#type
+                .as_ref()
+                .map_or(String::new(), |r#type| r#type.to_string()),
+            self.null
+                .as_ref()
+                .map_or(String::new(), |null| null.to_string()),
+            self.default
+                .as_ref()
+                .map_or(String::new(), |default| default.to_string()),
+            self.comment
+                .as_ref()
+                .map_or(String::new(), |comment| comment.to_string()),
+        ]
+    }
+}
+
+pub struct Index {
+    name: Option<String>,
+    column_name: Option<String>,
+    r#type: Option<String>,
+}
+
+impl TableRow for Index {
+    fn fields(&self) -> Vec<String> {
+        vec![
+            "name".to_string(),
+            "column_name".to_string(),
+            "type".to_string(),
+        ]
+    }
+
+    fn columns(&self) -> Vec<String> {
+        vec![
+            self.name
+                .as_ref()
+                .map_or(String::new(), |name| name.to_string()),
+            self.column_name
+                .as_ref()
+                .map_or(String::new(), |column_name| column_name.to_string()),
+            self.r#type
+                .as_ref()
+                .map_or(String::new(), |r#type| r#type.to_string()),
+        ]
+    }
+}
+
+pub struct ForeignKey {
+    name: Option<String>,
+    column_name: Option<String>,
+    ref_table: Option<String>,
+    ref_column: Option<String>,
+}
+
+impl TableRow for ForeignKey {
+    fn fields(&self) -> Vec<String> {
+        vec![
+            "name".to_string(),
+            "column_name".to_string(),
+            "ref_table".to_string(),
+            "ref_column".to_string(),
+        ]
+    }
+
+    fn columns(&self) -> Vec<String> {
+        vec![
+            self.name
+                .as_ref()
+                .map_or(String::new(), |name| name.to_string()),
+            self.column_name
+                .as_ref()
+                .map_or(String::new(), |r#type| r#type.to_string()),
+            self.ref_table
+                .as_ref()
+                .map_or(String::new(), |r#type| r#type.to_string()),
+            self.ref_column
+                .as_ref()
+                .map_or(String::new(), |r#type| r#type.to_string()),
+        ]
+    }
+}
+
+pub struct Constraint {
+    name: String,
+    column_name: String,
+    origin: Option<String>,
+}
+
+impl TableRow for Constraint {
+    fn fields(&self) -> Vec<String> {
+        let mut fields = vec![
+            "name".to_string(),
+            "column_name".to_string(),
+        ];
+        if self.origin.is_some() {
+            fields.push("origin".to_string());
+        }
+        fields
+    }
+
+    fn columns(&self) -> Vec<String> {
+        let mut columns = vec![
+            self.name.to_string(),
+            self.column_name.to_string(),
+        ];
+        if let Some(origin) = &self.origin {
+            columns.push(origin.clone())
+        }
+        columns
+    }
 }
 
 #[macro_export]
@@ -130,7 +263,7 @@ macro_rules! get_or_null {
     };
 }
 
-macro_rules! get_val {
+macro_rules! convert_column {
     ($row : expr, $column_name : expr, $($typ : ty),+) => {
         $(
         if let Ok(value) = $row.try_get($column_name) {
@@ -141,40 +274,25 @@ macro_rules! get_val {
     };
 }
 
-macro_rules! convert_row {
+macro_rules! convert_column_to_common_types {
     ($row : expr, $column_name : expr) => {
-    get_val!(
-        $row,
-        $column_name,
-        String,
-        &str,
-        i16,
-        i32,
-        i64,
-        f32,
-        f64,
-        chrono::DateTime<chrono::Utc>,
-        chrono::NaiveDateTime,
-        chrono::DateTime<chrono::Local>,
-        chrono::NaiveDate,
-        chrono::NaiveTime,
-        serde_json::Value,
-        bool);
+    convert_column!($row,$column_name,String,&str,i16,i32,i64,f32,f64,chrono::DateTime<chrono::Utc>,
+        chrono::NaiveDateTime,chrono::DateTime<chrono::Local>,chrono::NaiveDate,chrono::NaiveTime,
+        serde_json::Value,bool);
     };
 }
 
-
-pub fn convert_column_val_to_str<R : sqlx::Row + std::any::Any, C : Column>(row : &R, column : &C) -> anyhow::Result<String> {
+pub fn convert_column_val_to_str<R : sqlx::Row + std::any::Any, C : sqlx::Column>(row : &R, column : &C) -> anyhow::Result<String> {
     let row : &dyn std::any::Any = row;
     let column_name = column.name();
     if let Some(row) = row.downcast_ref::<MySqlRow>() {
-        convert_row!(row,column_name);
-        get_val!(row,column_name, rust_decimal::Decimal);
+        convert_column_to_common_types!(row,column_name);
+        convert_column!(row,column_name, rust_decimal::Decimal);
     } else if let Some(row) = row.downcast_ref::<SqliteRow>() {
-        convert_row!(row, column_name);
+        convert_column_to_common_types!(row, column_name);
     } else if let Some(row) = row.downcast_ref::<PgRow>() {
-        convert_row!(row, column_name);
-        get_val!(row,column_name, rust_decimal::Decimal);
+        convert_column_to_common_types!(row, column_name);
+        convert_column!(row,column_name, rust_decimal::Decimal);
         if let Ok(value) = row.try_get(column_name) {
             let value: Option<&[u8]> = value;
             return Ok(value.map_or("NULL".to_string(), |values| {

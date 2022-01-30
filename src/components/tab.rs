@@ -89,11 +89,11 @@ impl Component for TabToolbar {
         if let Key::Char(c) = key {
             if c.is_digit(10) {
                 let tab_number = c.to_digit(10).unwrap() as usize;
-                if tab_number > 0 && tab_number <= 9{
+                if tab_number > 0 && tab_number <= self.tab_names.len(){
                     self.selected_tab_index = tab_number - 1;
                     return Ok(EventState::Consumed);
                 }
-                return Ok(EventState::Consumed);
+                return Ok(EventState::NotConsumed);
             }
         }
         if key == self.key_config.focus_left &&
