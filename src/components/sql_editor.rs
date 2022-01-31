@@ -49,7 +49,8 @@ pub struct SqlEditorComponent {
     key_config: KeyConfig,
     paragraph_state: ParagraphState,
     focus: Focus,
-    shared_pool : SharedPool
+    shared_pool : SharedPool,
+    editor_name : String
 }
 
 impl<B : Backend> Tab<B> for SqlEditorComponent {
@@ -58,13 +59,17 @@ impl<B : Backend> Tab<B> for SqlEditorComponent {
     }
 
     fn tab_name(&self) -> String {
-        String::from("Sql Editor")
+        self.editor_name.clone()
+    }
+
+    fn update_name(&mut self, name : String) {
+        self.editor_name = name;
     }
 }
 
 
 impl SqlEditorComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool : SharedPool, editor_name : Option<String>) -> Self {
         Self {
             input: Vec::new(),
             input_idx: 0,
@@ -75,7 +80,8 @@ impl SqlEditorComponent {
             paragraph_state: ParagraphState::default(),
             query_result: None,
             key_config,
-            shared_pool
+            shared_pool,
+            editor_name: editor_name.unwrap_or("Sql Editor".to_string())
         }
     }
 

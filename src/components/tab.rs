@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use strum_macros::EnumIter;
@@ -11,17 +13,30 @@ use tui::{
 };
 use tui::layout::{Constraint, Direction, Layout};
 
+use crate::{command, handle_message};
 use crate::app::{AppMessage, SharedPool};
 use crate::components::{Drawable, PropertiesComponent, RecordTableComponent, SqlEditorComponent};
-use crate::components::command::{CommandInfo};
+use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
 use crate::components::EventState::{Consumed, NotConsumed};
 use crate::config::Config;
 use crate::config::KeyConfig;
 use crate::event::Key;
-use crate::handle_message;
+use crate::ui::textbox::TextBox;
 
 use super::{Component, DrawableComponent, EventState};
+
+enum TabMessage {
+    NewEditor,
+    CloseCurrentEditor,
+    RenameTab(usize, String)
+}
+
+impl AppMessage for TabMessage {
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+}
 
 #[derive(Debug, Clone, Copy, EnumIter)]
 pub enum TabType {
@@ -36,22 +51,47 @@ impl std::fmt::Display for TabType {
     }
 }
 
-pub trait Tab<B : Backend> : Drawable<B> + Component + Send{
+pub trait Tab<B: Backend>: Drawable<B> + Component + Send {
     fn tab_type(&self) -> TabType;
     fn tab_name(&self) -> String;
+    fn update_name(&mut self, _name : String) {}
 }
 
 ///TabToolbar - Toolbar for a TabPanel that contains a list of tab names and a selected tab index.
 pub struct TabToolbar {
-    pub selected_tab_index : usize,
+    pub selected_tab_index: usize,
     tab_names: Vec<String>,
-    key_config : KeyConfig
+    key_config: KeyConfig,
+    is_renaming: bool,
+    rename_box: TextBox,
 }
 
 impl TabToolbar {
-    pub fn new(tab_names : Vec<String>, key_config : KeyConfig) -> Self {
+    pub fn new(tab_names: Vec<String>, key_config: KeyConfig) -> Self {
         Self {
-            selected_tab_index: 0, tab_names, key_config
+            selected_tab_index: 0,
+            rename_box: TextBox::new(Some("New editor name".to_string())),
+            is_renaming: false,
+            tab_names,
+            key_config,
+        }
+    }
+
+    fn add_tab(&mut self, tab_name: String) {
+        self.tab_names.push(tab_name);
+    }
+
+    fn remove_tab(&mut self, index: usize) {
+        self.tab_names.remove(index);
+
+        if self.selected_tab_index >= self.tab_names.len() {
+            self.selected_tab_index = self.tab_names.len() - 1;
+        }
+    }
+
+    fn rename_tab_at(&mut self, index : usize, name : String) {
+        if index > 0 && index < self.tab_names.len() {
+            self.tab_names[index] = name;
         }
     }
 
@@ -62,38 +102,75 @@ impl TabToolbar {
 
 impl DrawableComponent for TabToolbar {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
-        let titles =
-            self.tab_names.iter()
-                .enumerate()
-                .map(|(i, name)| Spans::from(format!("{} [{}]", name, i + 1)))
-                .collect();
-        let tabs = Tabs::new(titles)
-            .block(Block::default().borders(Borders::ALL))
-            .select(self.selected_tab_index)
-            .style(if focused { Style::default()} else {Style::default().fg(Color::DarkGray)})
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Reset)
-                    .add_modifier(Modifier::UNDERLINED),
-            );
-        f.render_widget(tabs, area);
+        if self.is_renaming {
+            self.rename_box.draw(f, area, true)?;
+        } else {
+            let titles =
+                self.tab_names.iter()
+                    .enumerate()
+                    .map(|(i, name)| format!("{} [{}]", name, i + 1))
+                    .chain(std::iter::once("(Press 'e' for new editor)".to_string()))
+                    .map(Spans::from)
+                    .collect();
+            let tabs = Tabs::new(titles)
+                .block(Block::default().borders(Borders::ALL))
+                .select(self.selected_tab_index)
+                .style(if focused { Style::default() } else { Style::default().fg(Color::DarkGray) })
+                .highlight_style(
+                    Style::default()
+                        .fg(Color::Reset)
+                        .add_modifier(Modifier::UNDERLINED),
+                );
+            f.render_widget(tabs, area);
+        }
         Ok(())
     }
 }
 
 #[async_trait]
 impl Component for TabToolbar {
-    fn commands(&self, _out: &mut Vec<CommandInfo>) {}
+    fn commands(&self, commands: &mut Vec<CommandInfo>) {
+        let new_editor = command!("-- Tab Panel --","Open new editor [{}]", "e");
+        let close_editor = command!("-- Tab Panel --","Close editor [{}]", "x");
+        commands.push(new_editor);
+        commands.push(close_editor);
+    }
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+        if self.is_renaming && key != Key::Enter{
+            self.rename_box.event(key, message_queue).await?;
+            return Ok(Consumed);
+        } else if self.is_renaming && key == Key::Enter {
+            let new_tab_name = self.rename_box.input_str();
+            self.is_renaming = false;
+            message_queue.push(Box::new(TabMessage::RenameTab(self.selected_tab_index, new_tab_name)));
+            return Ok(Consumed);
+        }
+
+        if let Key::Char('e') = key {
+            message_queue.push(Box::new(TabMessage::NewEditor));
+            return Ok(Consumed);
+        }
+
+        if let Key::Char('x') = key {
+            message_queue.push(Box::new(TabMessage::CloseCurrentEditor));
+            return Ok(Consumed);
+        }
+
+        if !self.is_renaming && key == Key::Char('r') {
+                self.rename_box.reset();
+                self.is_renaming = true;
+                return Ok(Consumed);
+        }
+
         if let Key::Char(c) = key {
             if c.is_digit(10) {
                 let tab_number = c.to_digit(10).unwrap() as usize;
-                if tab_number > 0 && tab_number <= self.tab_names.len(){
+                if tab_number > 0 && tab_number <= self.tab_names.len() && !self.tab_names.is_empty() {
                     self.selected_tab_index = tab_number - 1;
-                    return Ok(EventState::Consumed);
+                    return Ok(Consumed);
                 }
-                return Ok(EventState::NotConsumed);
+                return Ok(NotConsumed);
             }
         }
         if key == self.key_config.focus_left &&
@@ -108,28 +185,38 @@ impl Component for TabToolbar {
             return Ok(Consumed);
         }
 
+        if key == Key::End {
+            self.selected_tab_index = self.tab_names.len() - 1;
+            return Ok(Consumed);
+        }
 
-        Ok(EventState::NotConsumed)
+        if key == Key::Home {
+            self.selected_tab_index = 0;
+            return Ok(Consumed);
+        }
+
+        Ok(NotConsumed)
     }
 }
 
 enum Focus {
     Toolbar,
-    Content
+    Content,
 }
 
-pub struct TabPanel<B : Backend> {
-    config : Config,
-    toolbar : TabToolbar,
-    tab_components : Vec<Box<dyn Tab<B>>>,
-    focus : Focus
+pub struct TabPanel<B: Backend> {
+    config: Config,
+    toolbar: TabToolbar,
+    tab_components: Vec<Box<dyn Tab<B>>>,
+    focus: Focus,
+    shared_pool: SharedPool,
 }
 
 impl<B: Backend> Drawable<B> for TabPanel<B> {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let block = tui::widgets::Block::default().title("Tab Panel here")
             .borders(Borders::ALL)
-            .style(if focused { Style::default().fg(Color::White)} else {Style::default().fg(Color::DarkGray)});
+            .style(if focused { Style::default().fg(Color::White) } else { Style::default().fg(Color::DarkGray) });
         f.render_widget(block, area);
 
         let tab_panel_chunks = Layout::default()
@@ -139,7 +226,7 @@ impl<B: Backend> Drawable<B> for TabPanel<B> {
 
         self.toolbar.draw(f, tab_panel_chunks[0], focused && matches!(self.focus, Focus::Toolbar))?;
         if let Some(tab_content) = self.tab_components.get_mut(self.toolbar.selected_tab_index) {
-            tab_content.draw(f,tab_panel_chunks[1], focused && matches!(self.focus, Focus::Content))?;
+            tab_content.draw(f, tab_panel_chunks[1], focused && matches!(self.focus, Focus::Content))?;
         }
         Ok(())
     }
@@ -147,18 +234,20 @@ impl<B: Backend> Drawable<B> for TabPanel<B> {
 
 
 #[async_trait]
-impl<B : Backend> Component for TabPanel<B> {
+impl<B: Backend> Component for TabPanel<B> {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {
-
+        self.toolbar.commands(_out);
+        for tab in self.tab_components.iter() {
+            tab.commands(_out);
+        }
     }
     async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
-
         match self.focus {
             Focus::Toolbar => {
                 if self.toolbar.event(key, message_queue).await?.is_consumed() {
-                    return Ok(EventState::Consumed)
+                    return Ok(EventState::Consumed);
                 }
-            },
+            }
             Focus::Content => {
                 if let Some(content) = self.tab_components.get_mut(self.toolbar.selected_tab_index) {
                     if content.event(key, message_queue).await?.is_consumed() {
@@ -182,6 +271,24 @@ impl<B : Backend> Component for TabPanel<B> {
             handle_message!(m,DatabaseEvent,
                 DatabaseEvent::TableSelected(_,_) => {self.toolbar.selected_tab_index = 0;}
             );
+
+            handle_message!(m, TabMessage,
+                TabMessage::NewEditor => {
+                    let num = self.tab_components.len() - 1;
+                    let tab_name = format!("Sql Editor {}", num);
+                    let new_editor = SqlEditorComponent::new(self.config.key_config.clone(), self.shared_pool.clone(), Some(tab_name.clone()));
+                    self.tab_components.push(Box::new(new_editor));
+                    self.toolbar.add_tab(tab_name);
+                },TabMessage::CloseCurrentEditor => {
+                    self.close_selected_editor();
+                }, TabMessage::RenameTab(index, new_name) => {
+                    if let Some(tab) = self.tab_components.get_mut(index.clone()) {
+                        tab.update_name(new_name.clone());
+                        self.toolbar.rename_tab_at(index.clone(), tab.tab_name());
+                    }
+                }
+            );
+
         }
         // pass to children
         return join_all(self.tab_components.iter_mut().map(|t| t.handle_messages(messages)))
@@ -195,26 +302,40 @@ impl<B : Backend> Component for TabPanel<B> {
         self.toolbar.selected_tab_index = 0;
         self.tab_components.iter_mut().for_each(|t| t.reset());
     }
-
 }
 
 
-impl<B : Backend> TabPanel<B>{
-    pub fn new(config : Config, shared_pool : SharedPool) -> TabPanel<B> {
-        let tab_components : Vec<Box<dyn Tab<B>>> = vec![
+impl<B: Backend> TabPanel<B> {
+    pub fn new(config: Config, shared_pool: SharedPool) -> TabPanel<B> {
+        let tab_components: Vec<Box<dyn Tab<B>>> = vec![
             Box::new(RecordTableComponent::new(config.key_config.clone(), shared_pool.clone())),
             Box::new(PropertiesComponent::new(config.key_config.clone(), shared_pool.clone())),
-            Box::new(SqlEditorComponent::new(config.key_config.clone(), shared_pool.clone()))
         ];
         return TabPanel {
             config: config.clone(),
-            toolbar : TabToolbar::new(tab_components.iter().map(|t| t.tab_name()).collect(), config.key_config),
+            toolbar: TabToolbar::new(tab_components.iter().map(|t| t.tab_name()).collect(), config.key_config),
             tab_components,
-            focus: Focus::Toolbar
+            focus: Focus::Toolbar,
+            shared_pool,
         };
     }
 
-    fn change_focus(&mut self, key : Key) -> Result<EventState> {
+    fn close_selected_editor(&mut self) {
+        let index = self.toolbar.selected_tab_index;
+        if let Some(tab) = self.tab_components.get(index) {
+            match tab.tab_type() {
+                TabType::Records | TabType::Properties => return (),
+                _ => ()
+            }
+        } else {
+            return;
+        }
+
+        self.tab_components.remove(index);
+        self.toolbar.remove_tab(index);
+    }
+
+    fn change_focus(&mut self, key: Key) -> Result<EventState> {
         match self.focus {
             Focus::Toolbar => {
                 if self.config.key_config.focus_down == key {
@@ -229,7 +350,7 @@ impl<B : Backend> TabPanel<B>{
                 }
             }
         }
-        return Ok(NotConsumed)
+        return Ok(NotConsumed);
     }
 }
 

@@ -1,9 +1,23 @@
 use crate::config::KeyConfig;
-
 static CMD_GROUP_GENERAL: &str = "-- General --";
 static CMD_GROUP_TABLE: &str = "-- Table --";
 static CMD_GROUP_DATABASES: &str = "-- Databases --";
 static CMD_GROUP_PROPERTIES: &str = "-- Properties --";
+
+#[macro_export]
+macro_rules! command {
+    ($group : expr, $msg : expr, $($key : expr),+ ) => {
+        crate::components::command::CommandInfo {
+            text: crate::components::command::CommandText::new(
+                 format!(
+                    $msg,
+                    $($key),*
+                ),
+                $group,
+            )
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub struct CommandText {
@@ -31,6 +45,8 @@ impl CommandInfo {
         Self { text }
     }
 }
+
+
 
 pub fn scroll(key: &KeyConfig) -> CommandText {
     CommandText::new(

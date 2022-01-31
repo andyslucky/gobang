@@ -94,27 +94,23 @@ impl<B : Backend> App<B> {
                     .split(f.size())[0],
                 false,
             )?;
-            self.error.draw(f, Rect::default(), false)?;
-            self.help.draw(f, Rect::default(), false)?;
-            return Ok(());
+        } else {
+            let main_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(self.left_main_chunk_percentage),
+                    Constraint::Percentage((100_u16).saturating_sub(self.left_main_chunk_percentage)),
+                ])
+                .split(f.size());
+            let sidebar_chunk = main_chunks[0];
+            let content_chunk = main_chunks[1];
+            if sidebar_chunk.width > 0 {
+                self.databases.draw(f, sidebar_chunk, matches!(self.focus, Focus::DatabaseList))?;
+            }
+            if content_chunk.width > 0 {
+                self.tab_panel.draw(f, content_chunk, matches!(self.focus, Focus::TabPanel))?;
+            }
         }
-
-        let main_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(self.left_main_chunk_percentage),
-                Constraint::Percentage((100_u16).saturating_sub(self.left_main_chunk_percentage)),
-            ])
-            .split(f.size());
-        let sidebar_chunk = main_chunks[0];
-        let content_chunk = main_chunks[1];
-
-        self.databases
-            .draw(f, sidebar_chunk, matches!(self.focus, Focus::DatabaseList))?;
-
-        self.tab_panel
-            .draw(f, content_chunk, matches!(self.focus, Focus::TabPanel))?;
-
         self.error.draw(f, Rect::default(), false)?;
         self.help.draw(f, Rect::default(), false)?;
         Ok(())
