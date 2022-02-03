@@ -12,6 +12,8 @@ use tui::{
     widgets::{Block, Borders, Tabs},
 };
 use tui::layout::{Constraint, Direction, Layout};
+use tui::widgets::canvas::Label;
+use tui::widgets::Paragraph;
 
 use crate::{command, handle_message};
 use crate::app::{AppMessage, SharedPool};
@@ -103,13 +105,15 @@ impl TabToolbar {
 impl DrawableComponent for TabToolbar {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         if self.is_renaming {
+            // let title = Paragraph::new("Renaming Tab: ");
+            // let title area =
             self.rename_box.draw(f, area, true)?;
         } else {
             let titles =
                 self.tab_names.iter()
                     .enumerate()
                     .map(|(i, name)| format!("{} [{}]", name, i + 1))
-                    .chain(std::iter::once("(Press 'e' for new editor)".to_string()))
+                    .chain(std::iter::once("(Press 'a' for new editor)".to_string()))
                     .map(Spans::from)
                     .collect();
             let tabs = Tabs::new(titles)
@@ -130,29 +134,42 @@ impl DrawableComponent for TabToolbar {
 #[async_trait]
 impl Component for TabToolbar {
     fn commands(&self, commands: &mut Vec<CommandInfo>) {
-        let new_editor = command!("-- Tab Panel --","Open new editor [{}]", "e");
-        let close_editor = command!("-- Tab Panel --","Close editor [{}]", "x");
-        commands.push(new_editor);
-        commands.push(close_editor);
+        commands.push(command!("-- Tab bar --","Open new editor [a]"));
+        commands.push(command!("-- Tab bar --","Close current editor [x,Del]"));
+        commands.push(command!("-- Tab bar --","Rename current editor [r]"));
+        commands.push(command!("-- Tab bar --","Cancel renaming [Esc]"));
     }
 
     async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
-        if self.is_renaming && key != Key::Enter{
-            self.rename_box.event(key, message_queue).await?;
-            return Ok(Consumed);
-        } else if self.is_renaming && key == Key::Enter {
-            let new_tab_name = self.rename_box.input_str();
-            self.is_renaming = false;
-            message_queue.push(Box::new(TabMessage::RenameTab(self.selected_tab_index, new_tab_name)));
-            return Ok(Consumed);
+        if self.is_renaming {
+            return match key {
+                Key::Enter => {
+                    let new_tab_name = self.rename_box.input_str();
+                    self.is_renaming = false;
+                    message_queue.push(Box::new(TabMessage::RenameTab(self.selected_tab_index, new_tab_name)));
+                    Ok(Consumed)
+                },
+                Key::Esc => {
+                    self.is_renaming = false;
+                    Ok(Consumed)
+                },
+                _ => {
+                    self.rename_box.event(key, message_queue).await?;
+                    Ok(Consumed)
+                }
+            }
+        } else if key == Key::Char('r') {
+                self.rename_box.reset();
+                self.is_renaming = true;
+                return Ok(Consumed);
         }
 
-        if let Key::Char('e') = key {
+        if Key::Char('a') == key {
             message_queue.push(Box::new(TabMessage::NewEditor));
             return Ok(Consumed);
         }
 
-        if let Key::Char('x') = key {
+        if key == Key::Char('x') || key == Key::Delete{
             message_queue.push(Box::new(TabMessage::CloseCurrentEditor));
             return Ok(Consumed);
         }

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use itertools::Itertools;
 use tui::{
     backend::Backend,
     Frame,
@@ -13,7 +14,7 @@ use crate::app::{GlobalMessageQueue, SharedPool};
 use crate::components::command::CommandInfo;
 
 use crate::components::Drawable;
-use crate::components::EventState::NotConsumed;
+use crate::components::EventState::{Consumed, NotConsumed};
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
 use crate::database::ExecuteResult;
@@ -147,7 +148,7 @@ impl SqlEditorComponent {
             self.input_cursor_position_x += middle
                 .join("")
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             if is_last_word {
                 self.input_cursor_position_x += " ".to_string().width() as u16
@@ -156,7 +157,7 @@ impl SqlEditorComponent {
                 .completion
                 .word()
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             self.update_completion();
             return Ok(EventState::Consumed);
@@ -170,24 +171,39 @@ impl SqlEditorComponent {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
-                self.input_cursor_position_x += compute_character_width(c);
+                self.input_cursor_position_x += compute_character_width(&c);
                 self.update_completion();
 
                 return Ok(EventState::Consumed);
             },
             Key::Enter => {
                // TODO : Implement enter key
+                self.input.insert(self.input_idx,'\n');
+                self.input_idx += 1;
+                self.input_cursor_position_x = 0;
+                return Ok(Consumed);
             },
             Key::Esc => {
                 self.focus = Focus::Table;
                 return Ok(EventState::Consumed);
             },
-            Key::Delete | Key::Backspace => {
+            Key::Backspace => {
                 let input_str: String = self.input.iter().collect();
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
                     let last_c = self.input.remove(self.input_idx - 1);
                     self.input_idx -= 1;
-                    self.input_cursor_position_x -= compute_character_width(last_c);
+                    if last_c == '\n' {
+                        let mut x_offset = 0;
+                        for c in self.input.iter().rev() {
+                           if *c == '\n' {
+                               break
+                           }
+                            x_offset += compute_character_width(c);
+                        }
+                        self.input_cursor_position_x = x_offset;
+                    } else {
+                        self.input_cursor_position_x -= compute_character_width(&last_c);
+                    }
                     self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
@@ -197,7 +213,7 @@ impl SqlEditorComponent {
                     self.input_idx -= 1;
                     self.input_cursor_position_x = self
                         .input_cursor_position_x
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
+                        .saturating_sub(compute_character_width(&self.input[self.input_idx]));
                     self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
@@ -206,7 +222,7 @@ impl SqlEditorComponent {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
-                    self.input_cursor_position_x += compute_character_width(next_c);
+                    self.input_cursor_position_x += compute_character_width(&next_c);
                     self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
@@ -279,6 +295,7 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
                 .draw(f, layout[1], focused && matches!(self.focus, Focus::Table))?;
         }
 
+        let lines = self.input.iter().filter(|c| **c == '\n').count();
         if focused && matches!(self.focus, Focus::Editor) {
             f.set_cursor(
                 (layout[0].x + 1)
@@ -288,6 +305,7 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
                     .min(area.right().saturating_sub(2)),
                 (layout[0].y
                     + 1
+                    + lines as u16
                     + self.input_cursor_position_x / layout[0].width.saturating_sub(2))
                 .min(layout[0].bottom()),
             )

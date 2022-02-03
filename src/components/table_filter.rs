@@ -114,7 +114,7 @@ impl TableFilterComponent {
             self.input_cursor_position += middle
                 .join("")
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             if is_last_word {
                 self.input_cursor_position += " ".to_string().width() as u16
@@ -123,7 +123,7 @@ impl TableFilterComponent {
                 .completion
                 .word()
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             self.update_completion();
             return Ok(EventState::Consumed);
@@ -211,7 +211,7 @@ impl Component for TableFilterComponent {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
-                self.input_cursor_position += compute_character_width(c);
+                self.input_cursor_position += compute_character_width(&c);
                 self.update_completion();
 
                 Ok(EventState::Consumed)
@@ -220,7 +220,7 @@ impl Component for TableFilterComponent {
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
                     let last_c = self.input.remove(self.input_idx - 1);
                     self.input_idx -= 1;
-                    self.input_cursor_position -= compute_character_width(last_c);
+                    self.input_cursor_position -= compute_character_width(&last_c);
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)
@@ -230,7 +230,7 @@ impl Component for TableFilterComponent {
                     self.input_idx -= 1;
                     self.input_cursor_position = self
                         .input_cursor_position
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
+                        .saturating_sub(compute_character_width(&self.input[self.input_idx]));
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)
@@ -246,7 +246,7 @@ impl Component for TableFilterComponent {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
-                    self.input_cursor_position += compute_character_width(next_c);
+                    self.input_cursor_position += compute_character_width(&next_c);
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)

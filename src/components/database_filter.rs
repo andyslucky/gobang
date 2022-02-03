@@ -86,7 +86,7 @@ impl Component for DatabaseFilterComponent {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
-                self.input_cursor_position += compute_character_width(c);
+                self.input_cursor_position += compute_character_width(&c);
 
                 return Ok(EventState::Consumed);
             }
@@ -94,7 +94,7 @@ impl Component for DatabaseFilterComponent {
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
                     let last_c = self.input.remove(self.input_idx - 1);
                     self.input_idx -= 1;
-                    self.input_cursor_position -= compute_character_width(last_c);
+                    self.input_cursor_position -= compute_character_width(&last_c);
                 }
                 return Ok(EventState::Consumed);
             }
@@ -103,7 +103,7 @@ impl Component for DatabaseFilterComponent {
                     self.input_idx -= 1;
                     self.input_cursor_position = self
                         .input_cursor_position
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
+                        .saturating_sub(compute_character_width(&self.input[self.input_idx]));
                 }
                 return Ok(EventState::Consumed);
             }
@@ -118,7 +118,7 @@ impl Component for DatabaseFilterComponent {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
-                    self.input_cursor_position += compute_character_width(next_c);
+                    self.input_cursor_position += compute_character_width(&next_c);
                 }
                 return Ok(EventState::Consumed);
             }

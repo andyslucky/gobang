@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use log::debug;
 use tui::backend::Backend;
 use tui::Frame;
 use tui::layout::Rect;
@@ -9,13 +10,14 @@ use tui::widgets::{Block, Borders, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::*;
+use crate::components::EventState::Consumed;
 use crate::Key;
 
+#[derive(Debug)]
 pub struct TextBox {
     placeholder: Option<String>,
     input: Vec<char>,
-    input_idx: usize,
-    input_cursor_position: u16,
+    input_cursor_position: usize,
 }
 
 impl TextBox {
@@ -23,7 +25,6 @@ impl TextBox {
         Self {
             placeholder,
             input: Vec::new(),
-            input_idx: 0,
             input_cursor_position: 0,
         }
     }
@@ -34,32 +35,31 @@ impl TextBox {
 
     pub fn reset(&mut self) {
         self.input = Vec::new();
-        self.input_idx = 0;
         self.input_cursor_position = 0;
     }
 }
 
 impl DrawableComponent for TextBox {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
-        let query = Paragraph::new(Spans::from(format!(
+        let curs_offset : usize = (0..self.input_cursor_position).map( |index| compute_character_width(&self.input[index as usize]) as usize).sum();
+        let text = Paragraph::new(Spans::from(format!(
             "{:w$}",
-            if self.input.is_empty() && !focused {
+            if self.input.is_empty() {
                 if let Some(placeholder) = &self.placeholder { placeholder.clone() } else { "".to_string() }
             } else {
                 self.input_str()
             },
             w = area.width as usize
-        ))).style(if focused {
+        ))).style(if focused && !self.input.is_empty() {
             Style::default()
         } else {
             Style::default().fg(Color::DarkGray)
-        })
-            .block(Block::default().borders(Borders::BOTTOM));
-        f.render_widget(query, area);
+        }).block(Block::default().borders(Borders::BOTTOM));
+        f.render_widget(text, area);
 
         if focused {
             f.set_cursor(
-                (area.x + self.input_cursor_position).min(area.right().saturating_sub(1)),
+                (area.x + curs_offset as u16).min(area.right().saturating_sub(1)),
                 area.y,
             )
         }
@@ -72,51 +72,48 @@ impl Component for TextBox {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
     async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+        debug!("Text box state {:?}", self);
         match key {
             Key::Char(c) => {
-                self.input.insert(self.input_idx, c);
-                self.input_idx += 1;
-                self.input_cursor_position += compute_character_width(c);
+                self.input.insert(self.input_cursor_position, c);
+                self.input_cursor_position += 1;
 
                 return Ok(EventState::Consumed);
             }
+            Key::Delete => {
+                if !self.input.is_empty() &&
+                    self.input_cursor_position as usize <= self.input.len().saturating_sub(1) {
+                    self.input.remove(self.input_cursor_position);
+                }
+                return Ok(Consumed);
+            }
             Key::Backspace => {
-                if !self.input.is_empty() && self.input_idx > 0 {
-                    let last_c = self.input.remove(self.input_idx - 1);
-                    self.input_idx -= 1;
-                    self.input_cursor_position -= compute_character_width(last_c);
+                if !self.input.is_empty() && self.input_cursor_position > 0 {
+                    self.input_cursor_position -= 1;
+                    self.input.remove(self.input_cursor_position);
                 }
                 return Ok(EventState::Consumed);
             }
             Key::Left => {
-                if !self.input.is_empty() && self.input_idx > 0 {
-                    self.input_idx -= 1;
+                if !self.input.is_empty() && self.input_cursor_position > 0 {
                     self.input_cursor_position = self
                         .input_cursor_position
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
-                }
-                return Ok(EventState::Consumed);
-            }
-            Key::Ctrl('a') => {
-                if !self.input.is_empty() && self.input_idx > 0 {
-                    self.input_idx = 0;
-                    self.input_cursor_position = 0
+                        .saturating_sub(1);
                 }
                 return Ok(EventState::Consumed);
             }
             Key::Right => {
-                if self.input_idx < self.input.len() {
-                    let next_c = self.input[self.input_idx];
-                    self.input_idx += 1;
-                    self.input_cursor_position += compute_character_width(next_c);
+                if self.input_cursor_position < self.input.len() {
+                    self.input_cursor_position += 1;
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Ctrl('e') => {
-                if self.input_idx < self.input.len() {
-                    self.input_idx = self.input.len();
-                    self.input_cursor_position = self.input_str().width() as u16;
-                }
+            Key::Ctrl('a') | Key::Home => {
+                self.input_cursor_position = 0;
+                return Ok(EventState::Consumed);
+            }
+            Key::Ctrl('e') | Key::End => {
+                self.input_cursor_position = self.input.len();
                 return Ok(EventState::Consumed);
             }
             _ => (),

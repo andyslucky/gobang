@@ -6,6 +6,6 @@ appenders:
     kind: file
     path: "log/stdout.log"
 root:
-  level: warn
+  level: debug
   appenders:
     - stdout

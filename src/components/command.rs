@@ -16,6 +16,12 @@ macro_rules! command {
                 $group,
             )
         }
+    };
+
+    ($group : expr, $msg : expr) => {
+        crate::components::command::CommandInfo {
+            text: crate::components::command::CommandText::new($msg.to_string(),$group)
+        }
     }
 }
 

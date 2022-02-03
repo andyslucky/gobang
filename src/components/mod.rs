@@ -137,6 +137,6 @@ pub trait Component {
     }
 }
 
-pub fn compute_character_width(c: char) -> u16 {
-    UnicodeWidthChar::width(c).unwrap().try_into().unwrap()
+pub fn compute_character_width(c: &char) -> u16 {
+    UnicodeWidthChar::width(c.clone()).unwrap_or(0) as u16
 }
