@@ -1,21 +1,28 @@
-use super::{
-    utils::scroll_vertical::VerticalScroll, Component, DrawableComponent, EventState,
-    StatefulDrawableComponent, TableStatusComponent, TableValueComponent,
-};
-use crate::components::command::{self, CommandInfo};
-use crate::config::KeyConfig;
-use crate::event::Key;
-use anyhow::Result;
-use database_tree::{Database, Table as DTable};
 use std::convert::From;
+
+use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Cell, Row, Table, TableState},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
+use database_tree::{Database, Table as DTable};
+use crate::components::command::{self, CommandInfo};
+use crate::components::Drawable;
+use crate::config::KeyConfig;
+
+use super::{
+    Component,
+    DrawableComponent,
+    EventState,
+    TableStatusComponent,
+    TableValueComponent,
+    utils::scroll_vertical::VerticalScroll
+};
 
 pub struct TableComponent {
     pub headers: Vec<String>,
@@ -400,8 +407,8 @@ impl TableComponent {
     }
 }
 
-impl StatefulDrawableComponent for TableComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for TableComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let chunks = Layout::default()
             .vertical_margin(1)
             .horizontal_margin(1)
@@ -517,6 +524,7 @@ impl StatefulDrawableComponent for TableComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableComponent {
     fn commands(&self, out: &mut Vec<CommandInfo>) {
         out.push(CommandInfo::new(command::extend_selection_by_one_cell(
@@ -524,7 +532,7 @@ impl Component for TableComponent {
         )));
     }
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.scroll_left {
             self.previous_column();
             return Ok(EventState::Consumed);
@@ -568,8 +576,9 @@ impl Component for TableComponent {
 
 #[cfg(test)]
 mod test {
-    use super::{KeyConfig, TableComponent};
     use tui::layout::Constraint;
+
+    use super::{KeyConfig, TableComponent};
 
     #[test]
     fn test_headers() {

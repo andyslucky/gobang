@@ -1,3 +1,16 @@
+use std::io;
+
+use anyhow::Result;
+use crossterm::{
+    ExecutableCommand,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use log::{error};
+use tui::{backend::CrosstermBackend, Terminal};
+
+use crate::app::App;
+use crate::event::{Event, Key};
+
 mod app;
 mod cli;
 mod clipboard;
@@ -8,21 +21,10 @@ mod event;
 mod ui;
 mod version;
 
-#[macro_use]
-mod log;
-
-use crate::app::App;
-use crate::event::{Event, Key};
-use anyhow::Result;
-use crossterm::{
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
-use std::io;
-use tui::{backend::CrosstermBackend, Terminal};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    log4rs::init_file("log4rs.yml", Default::default()).unwrap();
     let value = crate::cli::parse();
     let config = config::Config::new(&value.config)?;
 
@@ -38,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         terminal.draw(|f| {
             if let Err(err) = app.draw(f) {
-                outln!(config#Error, "error: {}", err.to_string());
+                error!("error: {}", err);
                 std::process::exit(1);
             }
         })?;
@@ -51,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
                         break;
                     }
                 }
-                Err(err) => app.error.set(err.to_string())?,
+                Err(err) => {
+                    error!("error: {}", err);
+                    app.error.set(err.to_string())?;
+                },
             },
             Event::Tick => (),
         }

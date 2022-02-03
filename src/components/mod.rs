@@ -1,3 +1,30 @@
+use std::convert::TryInto;
+
+use anyhow::Result;
+use async_trait::async_trait;
+use tui::{backend::Backend, Frame, layout::Rect};
+use unicode_width::UnicodeWidthChar;
+
+pub use command::{CommandInfo, CommandText};
+pub use completion::CompletionComponent;
+pub use connections::ConnectionsComponent;
+pub use database_filter::DatabaseFilterComponent;
+pub use databases::DatabasesComponent;
+#[cfg(debug_assertions)]
+pub use debug::DebugComponent;
+pub use error::ErrorComponent;
+pub use help::HelpComponent;
+pub use properties::PropertiesComponent;
+pub use record_table::RecordTableComponent;
+pub use sql_editor::SqlEditorComponent;
+pub use tab::TabToolbar;
+pub use table::TableComponent;
+pub use table_filter::TableFilterComponent;
+pub use table_status::TableStatusComponent;
+pub use table_value::TableValueComponent;
+
+use crate::app::{AppMessage};
+
 pub mod command;
 pub mod completion;
 pub mod connections;
@@ -15,34 +42,20 @@ pub mod table_status;
 pub mod table_value;
 pub mod utils;
 
+#[macro_export]
+macro_rules! handle_message {
+    ($message : expr, $msg_type : ty, $($p : pat => $expr :expr),+) => {
+        if let Some(e) = $message.as_any().downcast_ref::<$msg_type>() {
+            #[allow(unreachable_patterns)]
+                match e {
+                    $($p => $expr,)+
+                    _ => ()
+                }
+        }
+    };
+}
 #[cfg(debug_assertions)]
 pub mod debug;
-
-pub use command::{CommandInfo, CommandText};
-pub use completion::CompletionComponent;
-pub use connections::ConnectionsComponent;
-pub use database_filter::DatabaseFilterComponent;
-pub use databases::DatabasesComponent;
-pub use error::ErrorComponent;
-pub use help::HelpComponent;
-pub use properties::PropertiesComponent;
-pub use record_table::RecordTableComponent;
-pub use sql_editor::SqlEditorComponent;
-pub use tab::TabComponent;
-pub use table::TableComponent;
-pub use table_filter::TableFilterComponent;
-pub use table_status::TableStatusComponent;
-pub use table_value::TableValueComponent;
-
-#[cfg(debug_assertions)]
-pub use debug::DebugComponent;
-
-use crate::database::Pool;
-use anyhow::Result;
-use async_trait::async_trait;
-use std::convert::TryInto;
-use tui::{backend::Backend, layout::Rect, Frame};
-use unicode_width::UnicodeWidthChar;
 
 #[derive(PartialEq, Debug)]
 pub enum EventState {
@@ -70,8 +83,8 @@ pub trait DrawableComponent {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
 }
 
-pub trait StatefulDrawableComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
+pub trait Drawable<B : Backend> {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()>;
 }
 
 pub trait MovableComponent {
@@ -85,20 +98,18 @@ pub trait MovableComponent {
     ) -> Result<()>;
 }
 
+
+
 /// base component trait
 #[async_trait]
 pub trait Component {
     fn commands(&self, out: &mut Vec<CommandInfo>);
 
-    fn event(&mut self, key: crate::event::Key) -> Result<EventState>;
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState>;
 
-    async fn async_event(
-        &mut self,
-        _key: crate::event::Key,
-        _pool: &Box<dyn Pool>,
-    ) -> Result<EventState> {
-        Ok(EventState::NotConsumed)
-    }
+    async fn handle_messages(&mut self, _messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {Ok(())}
+
+    fn reset(&mut self){}
 
     fn focused(&self) -> bool {
         false
@@ -126,6 +137,6 @@ pub trait Component {
     }
 }
 
-fn compute_character_width(c: char) -> u16 {
-    UnicodeWidthChar::width(c).unwrap().try_into().unwrap()
+pub fn compute_character_width(c: &char) -> u16 {
+    UnicodeWidthChar::width(c.clone()).unwrap_or(0) as u16
 }

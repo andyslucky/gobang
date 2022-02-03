@@ -1,21 +1,24 @@
-use super::{
-    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
-    StatefulDrawableComponent,
-};
-use crate::components::command::CommandInfo;
-use crate::config::KeyConfig;
-use crate::event::Key;
 use anyhow::Result;
-use database_tree::Table;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
+
+use database_tree::Table;
+use crate::components::command::CommandInfo;
+use crate::components::Drawable;
+use crate::config::KeyConfig;
+use crate::event::Key;
+
+use super::{
+    CompletionComponent, Component, compute_character_width, EventState, MovableComponent
+};
 
 pub struct TableFilterComponent {
     key_config: KeyConfig,
@@ -111,7 +114,7 @@ impl TableFilterComponent {
             self.input_cursor_position += middle
                 .join("")
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             if is_last_word {
                 self.input_cursor_position += " ".to_string().width() as u16
@@ -120,7 +123,7 @@ impl TableFilterComponent {
                 .completion
                 .word()
                 .chars()
-                .map(compute_character_width)
+                .map(|c| compute_character_width(&c))
                 .sum::<u16>();
             self.update_completion();
             return Ok(EventState::Consumed);
@@ -129,8 +132,8 @@ impl TableFilterComponent {
     }
 }
 
-impl StatefulDrawableComponent for TableFilterComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
+impl<B : Backend> Drawable<B> for TableFilterComponent {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let query = Paragraph::new(Spans::from(vec![
             Span::styled(
                 self.table
@@ -190,10 +193,11 @@ impl StatefulDrawableComponent for TableFilterComponent {
     }
 }
 
+#[async_trait]
 impl Component for TableFilterComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         let input_str: String = self.input.iter().collect();
 
         // apply comletion candidates
@@ -207,7 +211,7 @@ impl Component for TableFilterComponent {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
-                self.input_cursor_position += compute_character_width(c);
+                self.input_cursor_position += compute_character_width(&c);
                 self.update_completion();
 
                 Ok(EventState::Consumed)
@@ -216,7 +220,7 @@ impl Component for TableFilterComponent {
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
                     let last_c = self.input.remove(self.input_idx - 1);
                     self.input_idx -= 1;
-                    self.input_cursor_position -= compute_character_width(last_c);
+                    self.input_cursor_position -= compute_character_width(&last_c);
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)
@@ -226,7 +230,7 @@ impl Component for TableFilterComponent {
                     self.input_idx -= 1;
                     self.input_cursor_position = self
                         .input_cursor_position
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
+                        .saturating_sub(compute_character_width(&self.input[self.input_idx]));
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)
@@ -242,7 +246,7 @@ impl Component for TableFilterComponent {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
-                    self.input_cursor_position += compute_character_width(next_c);
+                    self.input_cursor_position += compute_character_width(&next_c);
                     self.completion.update("");
                 }
                 Ok(EventState::Consumed)
@@ -254,7 +258,7 @@ impl Component for TableFilterComponent {
                 }
                 Ok(EventState::Consumed)
             }
-            key => self.completion.event(key),
+            key => self.completion.event(key, message_queue).await,
         }
     }
 }

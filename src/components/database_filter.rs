@@ -1,17 +1,22 @@
-use super::{compute_character_width, Component, DrawableComponent, EventState};
-use crate::components::command::CommandInfo;
-use crate::event::Key;
 use anyhow::Result;
-use database_tree::Table;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::Spans,
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
+
+use database_tree::Table;
+
+
+use crate::components::command::CommandInfo;
+use crate::event::Key;
+
+use super::{Component, compute_character_width, DrawableComponent, EventState};
 
 pub struct DatabaseFilterComponent {
     pub table: Option<Table>,
@@ -70,18 +75,18 @@ impl DrawableComponent for DatabaseFilterComponent {
         Ok(())
     }
 }
-
+#[async_trait]
 impl Component for DatabaseFilterComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         let input_str: String = self.input.iter().collect();
 
         match key {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
-                self.input_cursor_position += compute_character_width(c);
+                self.input_cursor_position += compute_character_width(&c);
 
                 return Ok(EventState::Consumed);
             }
@@ -89,7 +94,7 @@ impl Component for DatabaseFilterComponent {
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
                     let last_c = self.input.remove(self.input_idx - 1);
                     self.input_idx -= 1;
-                    self.input_cursor_position -= compute_character_width(last_c);
+                    self.input_cursor_position -= compute_character_width(&last_c);
                 }
                 return Ok(EventState::Consumed);
             }
@@ -98,7 +103,7 @@ impl Component for DatabaseFilterComponent {
                     self.input_idx -= 1;
                     self.input_cursor_position = self
                         .input_cursor_position
-                        .saturating_sub(compute_character_width(self.input[self.input_idx]));
+                        .saturating_sub(compute_character_width(&self.input[self.input_idx]));
                 }
                 return Ok(EventState::Consumed);
             }
@@ -113,7 +118,7 @@ impl Component for DatabaseFilterComponent {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
-                    self.input_cursor_position += compute_character_width(next_c);
+                    self.input_cursor_position += compute_character_width(&next_c);
                 }
                 return Ok(EventState::Consumed);
             }

@@ -1,16 +1,34 @@
-use super::{Component, EventState, StatefulDrawableComponent};
-use crate::components::command::CommandInfo;
-use crate::config::{Connection, KeyConfig};
-use crate::event::Key;
+use std::any::Any;
+
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
-    Frame,
 };
+
+use crate::app::{AppMessage};
+use crate::components::command::CommandInfo;
+
+use crate::components::Drawable;
+use crate::config::{Connection, KeyConfig};
+
+
+use super::{Component, EventState};
+
+pub enum ConnectionEvent {
+    ConnectionChanged(Option<Connection>),
+}
+
+impl AppMessage for ConnectionEvent {
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
+}
 
 pub struct ConnectionsComponent {
     connections: Vec<Connection>,
@@ -81,8 +99,8 @@ impl ConnectionsComponent {
     }
 }
 
-impl StatefulDrawableComponent for ConnectionsComponent {
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>, _area: Rect, _focused: bool) -> Result<()> {
+impl<B : Backend > Drawable<B> for ConnectionsComponent {
+    fn draw(&mut self, f: &mut Frame<B>, _area: Rect, _focused: bool) -> Result<()> {
         let width = 80;
         let height = 20;
         let conns = &self.connections;
@@ -111,10 +129,13 @@ impl StatefulDrawableComponent for ConnectionsComponent {
     }
 }
 
+
+
+#[async_trait]
 impl Component for ConnectionsComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.scroll_down {
             self.next_connection(1);
             return Ok(EventState::Consumed);
@@ -133,6 +154,13 @@ impl Component for ConnectionsComponent {
         } else if key == self.key_config.scroll_to_bottom {
             self.scroll_to_bottom();
             return Ok(EventState::Consumed);
+        } else if key == self.key_config.enter {
+            if let Some(conn) = self.selected_connection() {
+                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(Some(conn.clone()))));
+                return Ok(EventState::Consumed);
+            } else {
+                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(None)));
+            }
         }
         Ok(EventState::NotConsumed)
     }

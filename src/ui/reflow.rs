@@ -227,8 +227,9 @@ fn trim_offset(src: &str, mut offset: usize) -> &str {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use unicode_segmentation::UnicodeSegmentation;
+
+    use super::*;
 
     enum Composer {
         WordWrapper { trim: bool },

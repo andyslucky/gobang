@@ -1,36 +1,52 @@
-use super::{
-    utils::scroll_vertical::VerticalScroll, Component, DatabaseFilterComponent, DrawableComponent,
-    EventState,
-};
-use crate::components::command::{self, CommandInfo};
-use crate::config::{Connection, KeyConfig};
-use crate::database::Pool;
-use crate::event::Key;
-use crate::ui::common_nav;
-use crate::ui::scrolllist::draw_list_block;
-use anyhow::Result;
-use database_tree::{Database, DatabaseTree, DatabaseTreeItem};
+use std::any::Any;
 use std::collections::BTreeSet;
 use std::convert::From;
+
+use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders},
-    Frame,
+};
+
+use database_tree::{Database, DatabaseTree, DatabaseTreeItem, Table};
+
+use crate::app::{AppMessage, SharedPool};
+use crate::components::command::{self, CommandInfo};
+use crate::components::connections::ConnectionEvent;
+use crate::config::{Connection, KeyConfig};
+use crate::event::Key;
+use crate::ui::common_nav;
+use crate::ui::scrolllist::draw_list_block;
+
+use super::{
+    Component, DatabaseFilterComponent, DrawableComponent, EventState,
+    utils::scroll_vertical::VerticalScroll,
 };
 
 // ▸
 const FOLDER_ICON_COLLAPSED: &str = "\u{25b8}";
 // ▾
 const FOLDER_ICON_EXPANDED: &str = "\u{25be}";
-const EMPTY_STR: &str = "";
 
 #[derive(PartialEq)]
 pub enum Focus {
     Filter,
     Tree,
+}
+
+pub enum DatabaseEvent {
+    TableSelected(Database, Table)
+}
+
+impl AppMessage for DatabaseEvent {
+    fn as_any(&self) -> &(dyn Any + Send + Sync) {
+        self
+    }
 }
 
 pub struct DatabasesComponent {
@@ -40,10 +56,11 @@ pub struct DatabasesComponent {
     scroll: VerticalScroll,
     focus: Focus,
     key_config: KeyConfig,
+    shared_pool : SharedPool
 }
 
 impl DatabasesComponent {
-    pub fn new(key_config: KeyConfig) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
         Self {
             tree: DatabaseTree::default(),
             filter: DatabaseFilterComponent::new(),
@@ -51,17 +68,23 @@ impl DatabasesComponent {
             scroll: VerticalScroll::new(false, false),
             focus: Focus::Tree,
             key_config,
+            shared_pool
         }
     }
 
-    pub async fn update(&mut self, connection: &Connection, pool: &Box<dyn Pool>) -> Result<()> {
-        let databases = match &connection.database {
-            Some(database) => vec![Database::new(
-                database.clone(),
-                pool.get_tables(database.clone()).await?,
-            )],
-            None => pool.get_databases().await?,
-        };
+    async fn update(&mut self, conn_opt: &Option<Connection>) -> Result<()> {
+        let mut databases: Vec<Database> = vec![];
+        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+            if let Some(connection) = conn_opt {
+                databases = match &connection.database {
+                    Some(database) => vec![Database::new(
+                        database.clone(),
+                        pool.get_tables(database.clone()).await?,
+                    )],
+                    None => pool.get_databases().await?,
+                };
+            }
+        }
         self.tree = DatabaseTree::new(databases.as_slice(), &BTreeSet::new())?;
         self.filterd_tree = None;
         self.filter.reset();
@@ -98,7 +121,8 @@ impl DatabasesComponent {
                 FOLDER_ICON_EXPANDED
             }
         } else {
-            EMPTY_STR
+            // Naming self-explanatory constants is an anti-pattern, changing to literal value.
+            ""
         };
 
         if let Some(filter) = filter {
@@ -217,12 +241,13 @@ impl DrawableComponent for DatabasesComponent {
     }
 }
 
+#[async_trait]
 impl Component for DatabasesComponent {
     fn commands(&self, out: &mut Vec<CommandInfo>) {
         out.push(CommandInfo::new(command::expand_collapse(&self.key_config)))
     }
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.filter && self.focus == Focus::Tree {
             self.focus = Focus::Filter;
             return Ok(EventState::Consumed);
@@ -242,7 +267,7 @@ impl Component for DatabasesComponent {
                 return Ok(EventState::Consumed);
             }
             key if matches!(self.focus, Focus::Filter) => {
-                if self.filter.event(key)?.is_consumed() {
+                if self.filter.event(key, message_queue).await?.is_consumed() {
                     return Ok(EventState::Consumed);
                 }
             }
@@ -260,7 +285,29 @@ impl Component for DatabasesComponent {
                 }
             }
         }
+
+        if  key == self.key_config.enter && matches!(self.focus, Focus::Tree) {
+            if let Some((database, table)) = self.tree().selected_table() {
+                message_queue.push(Box::new(DatabaseEvent::TableSelected(database, table)));
+                return Ok(EventState::Consumed);
+            }
+        }
+
         Ok(EventState::NotConsumed)
+    }
+
+    async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        for m in messages.iter() {
+            if let Some(conn_event) = m.as_any().downcast_ref::<ConnectionEvent>() {
+                match conn_event {
+                    ConnectionEvent::ConnectionChanged(conn_opt) => {
+                        self.reset();
+                        self.update(conn_opt).await?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -274,8 +321,9 @@ fn tree_nav(tree: &mut DatabaseTree, key: Key, key_config: &KeyConfig) -> bool {
 
 #[cfg(test)]
 mod test {
-    use super::{Color, Database, DatabaseTreeItem, DatabasesComponent, Span, Spans, Style};
     use database_tree::Table;
+
+    use super::{Color, Database, DatabasesComponent, DatabaseTreeItem, Span, Spans, Style};
 
     #[test]
     fn test_tree_database_tree_item_to_span() {

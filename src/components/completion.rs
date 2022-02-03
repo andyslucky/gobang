@@ -1,15 +1,16 @@
-use super::{Component, EventState, MovableComponent};
-use crate::components::command::CommandInfo;
-use crate::config::KeyConfig;
-use crate::event::Key;
 use anyhow::Result;
+use async_trait::async_trait;
 use tui::{
     backend::Backend,
+    Frame,
     layout::Rect,
     style::{Color, Style},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
-    Frame,
 };
+use crate::components::command::CommandInfo;
+use crate::config::KeyConfig;
+
+use super::{Component, EventState, MovableComponent};
 
 const RESERVED_WORDS_IN_WHERE_CLAUSE: &[&str] = &["IN", "AND", "OR", "NOT", "NULL", "IS"];
 const ALL_RESERVED_WORDS: &[&str] = &[
@@ -133,10 +134,11 @@ impl MovableComponent for CompletionComponent {
     }
 }
 
+#[async_trait]
 impl Component for CompletionComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    fn event(&mut self, key: Key) -> Result<EventState> {
+    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
         if key == self.key_config.move_down {
             self.next();
             return Ok(EventState::Consumed);
