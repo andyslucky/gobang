@@ -231,7 +231,7 @@ pub struct TabPanel<B: Backend> {
 
 impl<B: Backend> Drawable<B> for TabPanel<B> {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
-        let block = tui::widgets::Block::default().title("Tab Panel here")
+        let block = tui::widgets::Block::default()
             .borders(Borders::ALL)
             .style(if focused { Style::default().fg(Color::White) } else { Style::default().fg(Color::DarkGray) });
         f.render_widget(block, area);

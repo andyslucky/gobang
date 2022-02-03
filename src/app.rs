@@ -7,6 +7,8 @@ use tui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
+use tui::style::{Color, Style};
+use tui::widgets::Block;
 
 use crate::{components::{
     command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent
@@ -86,6 +88,8 @@ impl<B : Backend> App<B> {
     }
 
     pub fn draw(&mut self, f: &mut Frame<'_, B>) -> anyhow::Result<()> {
+        let main_block = Block::default().style(Style::default().bg(Color::Rgb(0x21,0x2a,0x31)));
+        f.render_widget(main_block,f.size());
         if let Focus::ConnectionList = self.focus {
             self.connections.draw(
                 f,
@@ -95,6 +99,7 @@ impl<B : Backend> App<B> {
                 false,
             )?;
         } else {
+
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
