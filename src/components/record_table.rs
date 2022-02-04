@@ -17,6 +17,7 @@ use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
 use crate::{handle_message, Key};
+use crate::components::EventState::Consumed;
 
 use super::{Component, EventState};
 
@@ -121,7 +122,14 @@ impl Component for RecordTableComponent {
                 self.table.event(key, message_queue).await
             }
             Focus::Filter => {
-                self.filter.event(key, message_queue).await
+                if self.filter.event(key, message_queue).await?.is_consumed() {
+                    Ok(Consumed)
+                } else {
+                    if key == Key::Enter {
+                        self.focus = Focus::Table;
+                    }
+                    Ok(Consumed)
+                }
             }
         };
     }

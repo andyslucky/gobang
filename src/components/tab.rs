@@ -72,7 +72,7 @@ impl TabToolbar {
     pub fn new(tab_names: Vec<String>, key_config: KeyConfig) -> Self {
         Self {
             selected_tab_index: 0,
-            rename_box: TextBox::new(Some("New editor name".to_string())),
+            rename_box: TextBox::default().with_placeholder("New editor name"),
             is_renaming: false,
             tab_names,
             key_config,
@@ -160,6 +160,8 @@ impl Component for TabToolbar {
             }
         } else if key == Key::Char('r') {
                 self.rename_box.reset();
+            let tab_name = &self.tab_names[self.selected_tab_index];
+            self.rename_box.set_str(tab_name);
                 self.is_renaming = true;
                 return Ok(Consumed);
         }
