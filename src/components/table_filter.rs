@@ -43,6 +43,11 @@ impl TableFilterComponent {
         }
     }
 
+    pub fn set_table(&mut self, table : Table) {
+        self.text_box.set_label(table.name.clone());
+        self.table = Some(table);
+    }
+
     pub fn input_str(&self) -> String {
         self.text_box.input_str()
     }
@@ -135,11 +140,6 @@ impl TableFilterComponent {
 
 impl<B : Backend> Drawable<B> for TableFilterComponent {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
-        let a = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Length(7),Constraint::Length(area.width - 7)])
-            .split(area);
-        let where_literal = Paragraph::new("WHERE").block(Block::default().borders(Borders::ALL));
         // let query = Paragraph::new(Spans::from(vec![
         //     Span::styled(
         //         self.table
@@ -195,8 +195,7 @@ impl<B : Backend> Drawable<B> for TableFilterComponent {
         //         area.y + 1,
         //     )
         // }
-        f.render_widget(where_literal,a[0]);
-        self.text_box.draw(f, a[1], focused)?;
+        self.text_box.draw(f, area, focused)?;
         Ok(())
     }
 }

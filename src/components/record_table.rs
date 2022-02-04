@@ -90,7 +90,7 @@ impl RecordTableComponent {
             rows = res.1;
         }
         self.table.update(rows, headers, database, table.clone());
-        self.filter.table = Some(table);
+        self.filter.set_table(table);
         Ok(())
     }
 
@@ -107,19 +107,14 @@ impl Component for RecordTableComponent {
     }
 
     async fn event(&mut self, key: Key, message_queue: &mut GlobalMessageQueue) -> Result<EventState> {
-        if key == self.key_config.copy {
-            if let Some(text) = self.table.selected_cells() {
-                copy_to_clipboard(text.as_str())?
-            }
-        }
-        if key == self.key_config.filter {
-            self.focus = Focus::Filter;
-            return Ok(EventState::Consumed);
-        }
-
         return match self.focus {
             Focus::Table => {
-                self.table.event(key, message_queue).await
+                if key == self.key_config.filter {
+                    self.focus = Focus::Filter;
+                    Ok(EventState::Consumed)
+                } else {
+                    self.table.event(key, message_queue).await
+                }
             }
             Focus::Filter => {
                 if self.filter.event(key, message_queue).await?.is_consumed() {

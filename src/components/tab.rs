@@ -72,7 +72,7 @@ impl TabToolbar {
     pub fn new(tab_names: Vec<String>, key_config: KeyConfig) -> Self {
         Self {
             selected_tab_index: 0,
-            rename_box: TextBox::default().with_placeholder("New editor name"),
+            rename_box: TextBox::default().with_placeholder("Editor name").with_label("New name"),
             is_renaming: false,
             tab_names,
             key_config,
@@ -105,8 +105,6 @@ impl TabToolbar {
 impl DrawableComponent for TabToolbar {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         if self.is_renaming {
-            // let title = Paragraph::new("Renaming Tab: ");
-            // let title area =
             self.rename_box.draw(f, area, true)?;
         } else {
             let titles =
@@ -288,7 +286,10 @@ impl<B: Backend> Component for TabPanel<B> {
         // use crate::components::handle_message;
         for m in messages.iter() {
             handle_message!(m,DatabaseEvent,
-                DatabaseEvent::TableSelected(_,_) => {self.toolbar.selected_tab_index = 0;}
+                DatabaseEvent::TableSelected(_,_) => {
+                    self.toolbar.selected_tab_index = 0;
+                    self.focus = Focus::Content
+                }
             );
 
             handle_message!(m, TabMessage,

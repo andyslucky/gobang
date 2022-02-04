@@ -11,6 +11,7 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 use database_tree::{Database, Table as DTable};
+use crate::clipboard::copy_to_clipboard;
 use crate::components::command::{self, CommandInfo};
 use crate::components::Drawable;
 use crate::config::KeyConfig;
@@ -533,6 +534,12 @@ impl Component for TableComponent {
     }
 
     async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+        if key == self.key_config.copy {
+            if let Some(text) = self.selected_cells() {
+                copy_to_clipboard(text.as_str())?;
+                return Ok(EventState::Consumed);
+            }
+        }
         if key == self.key_config.scroll_left {
             self.previous_column();
             return Ok(EventState::Consumed);
