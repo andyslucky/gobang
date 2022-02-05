@@ -8,54 +8,94 @@ use tui::{
     style::{Color, Style},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
+
 use crate::app::{AppMessage, SharedPool};
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
 
 use super::{Component, EventState, MovableComponent};
 
-const RESERVED_WORDS_IN_WHERE_CLAUSE: &[&str] = &["IN", "AND", "OR", "NOT", "NULL", "IS"];
-const ALL_RESERVED_WORDS: &[&str] = &[
-    "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT","INSERT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE","LIKE"
-];
+#[async_trait]
+/// A FilterableCompletionSource abstracts the completion logic for a completion component.
+/// This allows each sql pool vendor/parent component to customize completion options to fit the context
+/// of the user's current action. Many vendors have their own unique set of keywords, this allows
+pub trait FilterableCompletionSource : Send + Sync {
+    /// Gets completion items for the last word part. Does not use current context to optimize suggestions
+    /// and suggestion order. This will be coming in a future update
+    async fn suggested_completion_items(&self, last_word_part: &String) -> anyhow::Result<Vec<String>>;
+}
+
+struct DefaultFilterableCompletionSource {
+    sql_key_words: Vec<String>,
+}
+
+impl DefaultFilterableCompletionSource {
+    fn new() -> Self {
+        Self{
+            sql_key_words:vec![
+                "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE", "LIKE"
+            ].iter().map(|s| String::from(*s)).collect()
+        }
+    }
+}
+
+#[async_trait]
+impl FilterableCompletionSource for DefaultFilterableCompletionSource {
+    async fn suggested_completion_items(&self, last_word_part: &String) -> Result<Vec<String>> {
+        let pattern_res = regex::Regex::new(format!("(?i)^{}", last_word_part).as_str());
+        if let Err(e) = &pattern_res {
+            error!("Error compiling pattern {}",e);
+            return Err(e.clone().into());
+        }
+        let patt = pattern_res.unwrap();
+        let candidates = self.sql_key_words.iter()
+            .filter(|kw| patt.is_match(kw.as_str()))
+            .map(|kw| kw.clone())
+            .collect();
+        debug!("Filtered candidates {:?}", candidates);
+        return Ok(candidates);
+    }
+}
+
 
 pub struct CompletionComponent {
     key_config: KeyConfig,
     state: ListState,
     word: String,
     candidates: Vec<String>,
+    completion_source : Box<dyn FilterableCompletionSource>
 
     // shared_pool : SharedPool
 }
 
 impl CompletionComponent {
-
     pub fn new(key_config: KeyConfig, word: impl Into<String>, all: bool) -> Self {
         Self {
             key_config,
             state: ListState::default(),
             word: word.into(),
-            candidates: vec![]
+            candidates: vec![],
+            completion_source : Box::new(DefaultFilterableCompletionSource::new())
         }
     }
 
 
-    pub fn update<S : Into<String>>(&mut self, word_part: S) {
+    pub async fn update<S: Into<String>>(&mut self, word_part: S) {
         self.word = word_part.into();
-        let pattern_res = regex::Regex::new(format!("(?i)^{}", self.word).as_str());
         self.state.select(None);
-        if let Err(e) = &pattern_res {
-            error!("Error compiling pattern {}",e);
-        } else if let Ok(patt) = &pattern_res {
-            self.candidates = ALL_RESERVED_WORDS.iter().filter(|kw| patt.is_match(kw)).map(|kw| String::from(*kw)).collect();
-            debug!("Filtered candidates {:?}", self.candidates);
+        let candidates_res = self.completion_source.suggested_completion_items(&self.word).await;
+        if let Err(e) = &candidates_res {
+            error!("Error fetching completion candidates {}",e);
+        } else if let Ok(candidates) = &candidates_res {
+            debug!("Filtered candidates {:?}", candidates);
+            self.candidates = candidates.clone();
             if !self.candidates.is_empty() {
                 self.state.select(Some(0));
             }
         }
     }
 
-    fn change_selection(&mut self, offset : i32) {
+    fn change_selection(&mut self, offset: i32) {
         if let Some(i) = self.state.selected() {
             let new_selected_index = (i as i32 + offset) as usize;
             if new_selected_index >= 0 && new_selected_index < self.candidates.len() {
@@ -74,11 +114,11 @@ impl CompletionComponent {
 
 
     pub fn selected_candidate(&self) -> Option<String> {
-       if let Some(index) = self.state.selected() {
-           Some(self.candidates[index].clone())
-       } else {
-           None
-       }
+        if let Some(index) = self.state.selected() {
+            Some(self.candidates[index].clone())
+        } else {
+            None
+        }
     }
 
     pub fn word(&self) -> String {

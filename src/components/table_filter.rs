@@ -79,7 +79,7 @@ impl Component for TableFilterComponent {
         if self.text_box.event(key, message_queue).await?.is_consumed() {
             if let Some(last_w) = self.text_box.last_word_part() {
                 debug!("Last word part '{}'", last_w);
-                self.completion.update(last_w);
+                self.completion.update(last_w).await;
             }
             return Ok(Consumed);
         }
