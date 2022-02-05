@@ -4,15 +4,15 @@ use async_trait::async_trait;
 
 use futures::TryStreamExt;
 use itertools::Itertools;
-use sqlx::{Column as _, Row as _};
 use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::{Column as _, Row as _};
 
 use database_tree::{Child, Database, Schema, Table};
 
-use crate::{pool_exec_impl};
-use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
+use crate::database::{convert_column_val_to_str, Column, Constraint, ForeignKey, Index};
+use crate::pool_exec_impl;
 
-use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
+use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
 
 pub struct PostgresPool {
     pool: PgPool,
@@ -32,7 +32,7 @@ impl PostgresPool {
 #[async_trait]
 impl Pool for PostgresPool {
     async fn execute(&self, query: &String) -> anyhow::Result<ExecuteResult> {
-        pool_exec_impl!(&self.pool,query);
+        pool_exec_impl!(&self.pool, query);
     }
 
     async fn get_databases(&self) -> anyhow::Result<Vec<Database>> {
@@ -225,7 +225,7 @@ impl Pool for PostgresPool {
             constraints.push(Box::new(Constraint {
                 name: row.try_get("constraint_name")?,
                 column_name: row.try_get("column_name")?,
-                origin: None
+                origin: None,
             }))
         }
         Ok(constraints)
@@ -353,5 +353,3 @@ impl PostgresPool {
         Ok(json.iter().map(|v| v.clone().0).collect())
     }
 }
-
-

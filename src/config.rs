@@ -1,14 +1,13 @@
-
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
+use crate::Key;
 use serde::Deserialize;
 #[cfg(test)]
 use serde::Serialize;
 use structopt::StructOpt;
-use crate::Key;
 
 #[derive(StructOpt, Debug)]
 pub struct CliConfig {
@@ -21,7 +20,7 @@ pub struct CliConfig {
 pub struct Config {
     pub conn: Vec<Connection>,
     #[serde(default)]
-    pub key_config: KeyConfig
+    pub key_config: KeyConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -91,7 +90,7 @@ pub struct KeyConfig {
     pub focus_right: Key,
     pub focus_left: Key,
     pub focus_above: Key,
-    pub focus_down : Key,
+    pub focus_down: Key,
     pub focus_connections: Key,
     pub open_help: Key,
     pub filter: Key,

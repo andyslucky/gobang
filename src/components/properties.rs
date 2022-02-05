@@ -2,22 +2,22 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, List, ListItem},
+    Frame,
 };
 
 use database_tree::{Database, Table};
 
 use crate::app::{AppMessage, SharedPool};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, TableComponent};
 use crate::components::command::{self, CommandInfo};
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
+use crate::components::{Drawable, TableComponent};
 use crate::config::KeyConfig;
-use crate::database::{TableRow};
+use crate::database::TableRow;
 use crate::handle_message;
 
 use super::{Component, EventState};
@@ -43,10 +43,10 @@ pub struct PropertiesComponent {
     index_table: TableComponent,
     focus: Focus,
     key_config: KeyConfig,
-    shared_pool : SharedPool
+    shared_pool: SharedPool,
 }
 
-impl<B : Backend> Tab<B> for PropertiesComponent {
+impl<B: Backend> Tab<B> for PropertiesComponent {
     fn tab_type(&self) -> TabType {
         TabType::Properties
     }
@@ -57,7 +57,7 @@ impl<B : Backend> Tab<B> for PropertiesComponent {
 }
 
 impl PropertiesComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool: SharedPool) -> Self {
         Self {
             column_table: TableComponent::new(key_config.clone()),
             constraint_table: TableComponent::new(key_config.clone()),
@@ -65,7 +65,7 @@ impl PropertiesComponent {
             index_table: TableComponent::new(key_config.clone()),
             focus: Focus::Column,
             key_config,
-            shared_pool
+            shared_pool,
         }
     }
 
@@ -78,11 +78,7 @@ impl PropertiesComponent {
         }
     }
 
-    async fn update(
-        &mut self,
-        database: Database,
-        table: Table,
-    ) -> Result<()> {
+    async fn update(&mut self, database: Database, table: Table) -> Result<()> {
         self.column_table.reset();
         let mut columns: Vec<Box<dyn TableRow>> = vec![];
         let mut constraints: Vec<Box<dyn TableRow>> = vec![];
@@ -162,7 +158,7 @@ impl PropertiesComponent {
     }
 }
 
-impl<B : Backend> Drawable<B> for PropertiesComponent {
+impl<B: Backend> Drawable<B> for PropertiesComponent {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -204,7 +200,11 @@ impl Component for PropertiesComponent {
         )));
     }
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         self.focused_component().event(key, message_queue).await?;
 
         if key == self.key_config.copy {

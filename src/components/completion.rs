@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use log::{debug, error};
 use tui::{
     backend::Backend,
-    Frame,
     layout::Rect,
     style::{Color, Style},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
+    Frame,
 };
 
 use crate::app::{AppMessage, SharedPool};
@@ -19,10 +19,13 @@ use super::{Component, EventState, MovableComponent};
 /// A FilterableCompletionSource abstracts the completion logic for a completion component.
 /// This allows each sql pool vendor/parent component to customize completion options to fit the context
 /// of the user's current action. Many vendors have their own unique set of keywords, this allows
-pub trait FilterableCompletionSource : Send + Sync {
+pub trait FilterableCompletionSource: Send + Sync {
     /// Gets completion items for the last word part. Does not use current context to optimize suggestions
     /// and suggestion order. This will be coming in a future update
-    async fn suggested_completion_items(&self, last_word_part: &String) -> anyhow::Result<Vec<String>>;
+    async fn suggested_completion_items(
+        &self,
+        last_word_part: &String,
+    ) -> anyhow::Result<Vec<String>>;
 }
 
 struct DefaultFilterableCompletionSource {
@@ -31,10 +34,14 @@ struct DefaultFilterableCompletionSource {
 
 impl DefaultFilterableCompletionSource {
     fn new() -> Self {
-        Self{
-            sql_key_words:vec![
-                "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE", "LIKE"
-            ].iter().map(|s| String::from(*s)).collect()
+        Self {
+            sql_key_words: vec![
+                "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE",
+                "FROM", "LIMIT", "WHERE", "LIKE",
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect(),
         }
     }
 }
@@ -44,11 +51,13 @@ impl FilterableCompletionSource for DefaultFilterableCompletionSource {
     async fn suggested_completion_items(&self, last_word_part: &String) -> Result<Vec<String>> {
         let pattern_res = regex::Regex::new(format!("(?i)^{}", last_word_part).as_str());
         if let Err(e) = &pattern_res {
-            error!("Error compiling pattern {}",e);
+            error!("Error compiling pattern {}", e);
             return Err(e.clone().into());
         }
         let patt = pattern_res.unwrap();
-        let candidates = self.sql_key_words.iter()
+        let candidates = self
+            .sql_key_words
+            .iter()
             .filter(|kw| patt.is_match(kw.as_str()))
             .map(|kw| kw.clone())
             .collect();
@@ -57,15 +66,12 @@ impl FilterableCompletionSource for DefaultFilterableCompletionSource {
     }
 }
 
-
 pub struct CompletionComponent {
     key_config: KeyConfig,
     state: ListState,
     word: String,
     candidates: Vec<String>,
-    completion_source : Box<dyn FilterableCompletionSource>
-
-    // shared_pool : SharedPool
+    completion_source: Box<dyn FilterableCompletionSource>, // shared_pool : SharedPool
 }
 
 impl CompletionComponent {
@@ -75,17 +81,19 @@ impl CompletionComponent {
             state: ListState::default(),
             word: word.into(),
             candidates: vec![],
-            completion_source : Box::new(DefaultFilterableCompletionSource::new())
+            completion_source: Box::new(DefaultFilterableCompletionSource::new()),
         }
     }
-
 
     pub async fn update<S: Into<String>>(&mut self, word_part: S) {
         self.word = word_part.into();
         self.state.select(None);
-        let candidates_res = self.completion_source.suggested_completion_items(&self.word).await;
+        let candidates_res = self
+            .completion_source
+            .suggested_completion_items(&self.word)
+            .await;
         if let Err(e) = &candidates_res {
-            error!("Error fetching completion candidates {}",e);
+            error!("Error fetching completion candidates {}", e);
         } else if let Ok(candidates) = &candidates_res {
             debug!("Filtered candidates {:?}", candidates);
             self.candidates = candidates.clone();
@@ -111,7 +119,6 @@ impl CompletionComponent {
     fn previous(&mut self) {
         self.change_selection(-1);
     }
-
 
     pub fn selected_candidate(&self) -> Option<String> {
         if let Some(index) = self.state.selected() {
@@ -152,12 +159,12 @@ impl MovableComponent for CompletionComponent {
                 .style(Style::default());
 
             let area = Rect::new(
-                x, y,
+                x,
+                y,
                 width
                     .min(f.size().width)
                     .min(f.size().right().saturating_sub(area.x + x)),
-                (cand_len.min(5) as u16 + 2)
-                    .min(f.size().bottom().saturating_sub(area.y + y + 2)),
+                (cand_len.min(5) as u16 + 2).min(f.size().bottom().saturating_sub(area.y + y + 2)),
             );
             f.render_widget(Clear, area);
             f.render_stateful_widget(candidate_list, area, &mut self.state);
@@ -170,7 +177,11 @@ impl MovableComponent for CompletionComponent {
 impl Component for CompletionComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if key == self.key_config.move_down {
             self.next();
             return Ok(EventState::Consumed);

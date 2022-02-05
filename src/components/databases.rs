@@ -6,11 +6,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders},
+    Frame,
 };
 
 use database_tree::{Database, DatabaseTree, DatabaseTreeItem, Table};
@@ -24,8 +24,8 @@ use crate::ui::common_nav;
 use crate::ui::scrolllist::draw_list_block;
 
 use super::{
-    Component, DatabaseFilterComponent, DrawableComponent, EventState,
-    utils::scroll_vertical::VerticalScroll,
+    utils::scroll_vertical::VerticalScroll, Component, DatabaseFilterComponent, DrawableComponent,
+    EventState,
 };
 
 // ▸
@@ -40,7 +40,7 @@ pub enum Focus {
 }
 
 pub enum DatabaseEvent {
-    TableSelected(Database, Table)
+    TableSelected(Database, Table),
 }
 
 impl AppMessage for DatabaseEvent {
@@ -56,11 +56,11 @@ pub struct DatabasesComponent {
     scroll: VerticalScroll,
     focus: Focus,
     key_config: KeyConfig,
-    shared_pool : SharedPool
+    shared_pool: SharedPool,
 }
 
 impl DatabasesComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, shared_pool: SharedPool) -> Self {
         Self {
             tree: DatabaseTree::default(),
             filter: DatabaseFilterComponent::new(),
@@ -68,7 +68,7 @@ impl DatabasesComponent {
             scroll: VerticalScroll::new(false, false),
             focus: Focus::Tree,
             key_config,
-            shared_pool
+            shared_pool,
         }
     }
 
@@ -247,7 +247,11 @@ impl Component for DatabasesComponent {
         out.push(CommandInfo::new(command::expand_collapse(&self.key_config)))
     }
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if key == self.key_config.filter && self.focus == Focus::Tree {
             self.focus = Focus::Filter;
             return Ok(EventState::Consumed);
@@ -286,7 +290,7 @@ impl Component for DatabasesComponent {
             }
         }
 
-        if  key == self.key_config.enter && matches!(self.focus, Focus::Tree) {
+        if key == self.key_config.enter && matches!(self.focus, Focus::Tree) {
             if let Some((database, table)) = self.tree().selected_table() {
                 message_queue.push(Box::new(DatabaseEvent::TableSelected(database, table)));
                 return Ok(EventState::Consumed);
@@ -323,7 +327,7 @@ fn tree_nav(tree: &mut DatabaseTree, key: Key, key_config: &KeyConfig) -> bool {
 mod test {
     use database_tree::Table;
 
-    use super::{Color, Database, DatabasesComponent, DatabaseTreeItem, Span, Spans, Style};
+    use super::{Color, Database, DatabaseTreeItem, DatabasesComponent, Span, Spans, Style};
 
     #[test]
     fn test_tree_database_tree_item_to_span() {

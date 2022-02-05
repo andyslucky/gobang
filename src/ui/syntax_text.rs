@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use syntect::{
     highlighting::{
-        FontStyle, Highlighter, HighlightState, RangedHighlightIterator, Style, ThemeSet,
+        FontStyle, HighlightState, Highlighter, RangedHighlightIterator, Style, ThemeSet,
     },
     parsing::{ParseState, ScopeStack, SyntaxSet},
 };

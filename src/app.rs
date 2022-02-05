@@ -2,51 +2,54 @@ use std::any::Any;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
-use tui::{
-    backend::Backend,
-    Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-};
 use tui::style::{Color, Style};
 use tui::widgets::Block;
-
-use crate::{components::{
-    command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent
-}, config::Config, handle_message};
-use crate::components::{
-    CommandInfo, Component as _, Drawable, DrawableComponent as _, EventState
+use tui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    Frame,
 };
+
 use crate::components::connections::ConnectionEvent;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::TabPanel;
+use crate::components::{
+    CommandInfo, Component as _, Drawable, DrawableComponent as _, EventState,
+};
 use crate::config::Connection;
 use crate::database::{MySqlPool, Pool, PostgresPool, SqlitePool};
 use crate::event::Key;
+use crate::{
+    components::{
+        command, ConnectionsComponent, DatabasesComponent, ErrorComponent, HelpComponent,
+    },
+    config::Config,
+    handle_message,
+};
 
 pub type SharedPool = Arc<RwLock<Option<Box<dyn Pool>>>>;
 
 /// Dynamic trait representing a message/event. Messages may be added to the global event queue during
 /// by any component's event handler. The global message queue will be processed at the end of each key event
 /// and at the end of each tick.
-pub trait AppMessage : Send + Sync{
+pub trait AppMessage: Send + Sync {
     fn as_any(&self) -> &(dyn Any + Send + Sync);
 }
 
-
 /// Global event queue. Stores queued events until the
 pub struct GlobalMessageQueue {
-    event_queue : Vec<Box<dyn AppMessage>>
+    event_queue: Vec<Box<dyn AppMessage>>,
 }
-
-
 
 impl GlobalMessageQueue {
     fn drain(&mut self) -> Vec<Box<dyn AppMessage>> {
-        if self.event_queue.is_empty() {return vec![];}
+        if self.event_queue.is_empty() {
+            return vec![];
+        }
         return self.event_queue.drain(0..).collect();
     }
 
-    pub fn push(&mut self, message : Box<dyn AppMessage>) {
+    pub fn push(&mut self, message: Box<dyn AppMessage>) {
         self.event_queue.push(message);
     }
 }
@@ -56,40 +59,42 @@ pub enum Focus {
     TabPanel,
     ConnectionList,
 }
-pub struct App<B : Backend> {
+pub struct App<B: Backend> {
     focus: Focus,
-    tab_panel : TabPanel<B>,
+    tab_panel: TabPanel<B>,
     help: HelpComponent,
     databases: DatabasesComponent,
     connections: ConnectionsComponent,
     pool: SharedPool,
     left_main_chunk_percentage: u16,
-    message_queue : GlobalMessageQueue,
+    message_queue: GlobalMessageQueue,
     pub config: Config,
     pub error: ErrorComponent,
 }
 
-impl<B : Backend> App<B> {
+impl<B: Backend> App<B> {
     pub fn new(config: Config) -> App<B> {
         let config_clone = config.clone();
         let share_pool = Arc::new(RwLock::new(None));
-         App {
+        App {
             config: config.clone(),
             connections: ConnectionsComponent::new(config.key_config.clone(), config.conn),
-            tab_panel: TabPanel::new(config_clone,share_pool.clone()),
+            tab_panel: TabPanel::new(config_clone, share_pool.clone()),
             help: HelpComponent::new(config.key_config.clone()),
             databases: DatabasesComponent::new(config.key_config.clone(), share_pool.clone()),
             error: ErrorComponent::new(config.key_config),
             focus: Focus::ConnectionList,
             pool: share_pool.clone(),
-            message_queue: GlobalMessageQueue{event_queue: vec![]},
+            message_queue: GlobalMessageQueue {
+                event_queue: vec![],
+            },
             left_main_chunk_percentage: 15,
         }
     }
 
     pub fn draw(&mut self, f: &mut Frame<'_, B>) -> anyhow::Result<()> {
-        let main_block = Block::default().style(Style::default().bg(Color::Rgb(0x21,0x2a,0x31)));
-        f.render_widget(main_block,f.size());
+        let main_block = Block::default().style(Style::default().bg(Color::Rgb(0x21, 0x2a, 0x31)));
+        f.render_widget(main_block, f.size());
         if let Focus::ConnectionList = self.focus {
             self.connections.draw(
                 f,
@@ -99,21 +104,24 @@ impl<B : Backend> App<B> {
                 false,
             )?;
         } else {
-
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
                     Constraint::Percentage(self.left_main_chunk_percentage),
-                    Constraint::Percentage((100_u16).saturating_sub(self.left_main_chunk_percentage)),
+                    Constraint::Percentage(
+                        (100_u16).saturating_sub(self.left_main_chunk_percentage),
+                    ),
                 ])
                 .split(f.size());
             let sidebar_chunk = main_chunks[0];
             let content_chunk = main_chunks[1];
             if sidebar_chunk.width > 0 {
-                self.databases.draw(f, sidebar_chunk, matches!(self.focus, Focus::DatabaseList))?;
+                self.databases
+                    .draw(f, sidebar_chunk, matches!(self.focus, Focus::DatabaseList))?;
             }
             if content_chunk.width > 0 {
-                self.tab_panel.draw(f, content_chunk, matches!(self.focus, Focus::TabPanel))?;
+                self.tab_panel
+                    .draw(f, content_chunk, matches!(self.focus, Focus::TabPanel))?;
             }
         }
         self.error.draw(f, Rect::default(), false)?;
@@ -160,13 +168,13 @@ impl<B : Backend> App<B> {
             Ok(Box::new(
                 SqlitePool::new(conn.database_url()?.as_str()).await?,
             ))
-        }
+        };
     }
 
     pub async fn event(&mut self, key: Key) -> anyhow::Result<EventState> {
         self.update_commands();
-        let mut result : anyhow::Result<EventState> = Ok(EventState::NotConsumed);
-            // send the event to all children, if it is handled then return
+        let mut result: anyhow::Result<EventState> = Ok(EventState::NotConsumed);
+        // send the event to all children, if it is handled then return
         if self.components_event(key).await?.is_consumed() {
             result = Ok(EventState::Consumed);
         } else if self.move_focus(key)?.is_consumed() {
@@ -187,8 +195,10 @@ impl<B : Backend> App<B> {
         self.focus = Focus::DatabaseList;
     }
 
-    async fn handle_messages(&mut self, messages : &mut Vec<Box<dyn AppMessage>>) -> anyhow::Result<()>{
-
+    async fn handle_messages(
+        &mut self,
+        messages: &mut Vec<Box<dyn AppMessage>>,
+    ) -> anyhow::Result<()> {
         for m in messages.iter() {
             handle_message!(m, ConnectionEvent,
                 ConnectionEvent::ConnectionChanged(conn_opt) => {
@@ -215,35 +225,65 @@ impl<B : Backend> App<B> {
             return futures::future::join_all(vec![
                 self.databases.handle_messages(&messages),
                 self.tab_panel.handle_messages(&messages),
-                self.connections.handle_messages(&messages)
-            ]).await.drain(0..).reduce(Result::and).unwrap();
+                self.connections.handle_messages(&messages),
+            ])
+            .await
+            .drain(0..)
+            .reduce(Result::and)
+            .unwrap();
         }
         Ok(())
     }
 
     async fn components_event(&mut self, key: Key) -> anyhow::Result<EventState> {
-        if self.error.event(key, &mut self.message_queue).await?.is_consumed() {
+        if self
+            .error
+            .event(key, &mut self.message_queue)
+            .await?
+            .is_consumed()
+        {
             return Ok(EventState::Consumed);
         }
 
-        if !matches!(self.focus, Focus::ConnectionList) && self.help.event(key, &mut self.message_queue).await?.is_consumed() {
+        if !matches!(self.focus, Focus::ConnectionList)
+            && self
+                .help
+                .event(key, &mut self.message_queue)
+                .await?
+                .is_consumed()
+        {
             return Ok(EventState::Consumed);
         }
 
         match self.focus {
             Focus::ConnectionList => {
-                if self.connections.event(key, &mut self.message_queue).await?.is_consumed() {
+                if self
+                    .connections
+                    .event(key, &mut self.message_queue)
+                    .await?
+                    .is_consumed()
+                {
                     return Ok(EventState::Consumed);
                 }
             }
             Focus::DatabaseList => {
-                if self.databases.event(key, &mut self.message_queue).await?.is_consumed() {
+                if self
+                    .databases
+                    .event(key, &mut self.message_queue)
+                    .await?
+                    .is_consumed()
+                {
                     return Ok(EventState::Consumed);
                 }
             }
             Focus::TabPanel => {
-                if self.tab_panel.event(key, &mut self.message_queue).await?.is_consumed() {
-                    return Ok(EventState::Consumed)
+                if self
+                    .tab_panel
+                    .event(key, &mut self.message_queue)
+                    .await?
+                    .is_consumed()
+                {
+                    return Ok(EventState::Consumed);
                 }
                 // TODO: Reimplement this section in the records tab
                 // match self.tab.selected_tab {

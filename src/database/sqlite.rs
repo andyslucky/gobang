@@ -2,15 +2,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::TryStreamExt;
+use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Column as _, Row as _};
-use sqlx::sqlite::{SqlitePoolOptions};
 
 use database_tree::{Child, Database, Table};
 
-use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
+use crate::database::{convert_column_val_to_str, Column, Constraint, ForeignKey, Index};
 use crate::pool_exec_impl;
 
-use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
+use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
 
 pub struct SqlitePool {
     pool: sqlx::sqlite::SqlitePool,
@@ -184,7 +184,7 @@ impl Pool for SqlitePool {
                 column_name: row.try_get("from")?,
                 ref_table: row.try_get("table")?,
                 ref_column: row.try_get("to")?,
-                name : None
+                name: None,
             }))
         }
         Ok(foreign_keys)

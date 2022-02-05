@@ -2,10 +2,10 @@ use std::io;
 
 use anyhow::Result;
 use crossterm::{
-    ExecutableCommand,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
-use log::{error};
+use log::error;
 use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::app::App;
@@ -20,7 +20,6 @@ mod database;
 mod event;
 mod ui;
 mod version;
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -56,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
                 Err(err) => {
                     error!("error: {}", err);
                     app.error.set(err.to_string())?;
-                },
+                }
             },
             Event::Tick => (),
         }

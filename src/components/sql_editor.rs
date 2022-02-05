@@ -3,26 +3,27 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Wrap},
+    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{GlobalMessageQueue, SharedPool};
 use crate::components::command::CommandInfo;
 
+use crate::components::tab::{Tab, TabType};
 use crate::components::Drawable;
 use crate::components::EventState::{Consumed, NotConsumed};
-use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
 use crate::database::ExecuteResult;
 use crate::event::Key;
 use crate::ui::stateful_paragraph::{ParagraphState, StatefulParagraph};
 
 use super::{
-    CompletionComponent, Component, compute_character_width, EventState, MovableComponent, TableComponent,
+    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
+    TableComponent,
 };
 
 struct QueryResult {
@@ -50,11 +51,11 @@ pub struct SqlEditorComponent {
     key_config: KeyConfig,
     paragraph_state: ParagraphState,
     focus: Focus,
-    shared_pool : SharedPool,
-    editor_name : String
+    shared_pool: SharedPool,
+    editor_name: String,
 }
 
-impl<B : Backend> Tab<B> for SqlEditorComponent {
+impl<B: Backend> Tab<B> for SqlEditorComponent {
     fn tab_type(&self) -> TabType {
         TabType::Sql
     }
@@ -63,14 +64,17 @@ impl<B : Backend> Tab<B> for SqlEditorComponent {
         self.editor_name.clone()
     }
 
-    fn update_name(&mut self, name : String) {
+    fn update_name(&mut self, name: String) {
         self.editor_name = name;
     }
 }
 
-
 impl SqlEditorComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool, editor_name : Option<String>) -> Self {
+    pub fn new(
+        key_config: KeyConfig,
+        shared_pool: SharedPool,
+        editor_name: Option<String>,
+    ) -> Self {
         Self {
             input: Vec::new(),
             input_idx: 0,
@@ -82,7 +86,7 @@ impl SqlEditorComponent {
             query_result: None,
             key_config,
             shared_pool,
-            editor_name: editor_name.unwrap_or("Sql Editor".to_string())
+            editor_name: editor_name.unwrap_or("Sql Editor".to_string()),
         }
     }
 
@@ -165,8 +169,11 @@ impl SqlEditorComponent {
         Ok(EventState::NotConsumed)
     }
 
-
-    async fn editor_key_event(&mut self, key : Key, _ :&mut GlobalMessageQueue) -> Result<EventState>{
+    async fn editor_key_event(
+        &mut self,
+        key: Key,
+        _: &mut GlobalMessageQueue,
+    ) -> Result<EventState> {
         match key {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
@@ -175,18 +182,18 @@ impl SqlEditorComponent {
                 self.update_completion();
 
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::Enter => {
-               // TODO : Implement enter key
-                self.input.insert(self.input_idx,'\n');
+                // TODO : Implement enter key
+                self.input.insert(self.input_idx, '\n');
                 self.input_idx += 1;
                 self.input_cursor_position_x = 0;
                 return Ok(Consumed);
-            },
+            }
             Key::Esc => {
                 self.focus = Focus::Table;
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::Backspace => {
                 let input_str: String = self.input.iter().collect();
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
@@ -195,9 +202,9 @@ impl SqlEditorComponent {
                     if last_c == '\n' {
                         let mut x_offset = 0;
                         for c in self.input.iter().rev() {
-                           if *c == '\n' {
-                               break
-                           }
+                            if *c == '\n' {
+                                break;
+                            }
                             x_offset += compute_character_width(c);
                         }
                         self.input_cursor_position_x = x_offset;
@@ -207,8 +214,8 @@ impl SqlEditorComponent {
                     self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
-            },
-            Key::Left  => {
+            }
+            Key::Left => {
                 if !self.input.is_empty() && self.input_idx > 0 {
                     self.input_idx -= 1;
                     self.input_cursor_position_x = self
@@ -218,7 +225,7 @@ impl SqlEditorComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Right  => {
+            Key::Right => {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
@@ -226,13 +233,13 @@ impl SqlEditorComponent {
                     self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::F5 => {
-                    let query : String = self.input.iter().collect();
-                    self.execute_query(query).await?;
-                    return Ok(EventState::Consumed);
-            },
-            _ => ()
+                let query: String = self.input.iter().collect();
+                self.execute_query(query).await?;
+                return Ok(EventState::Consumed);
+            }
+            _ => (),
         }
         Ok(NotConsumed)
     }
@@ -258,10 +265,9 @@ impl SqlEditorComponent {
         }
         Ok(())
     }
-
 }
 
-impl<B : Backend> Drawable<B> for SqlEditorComponent {
+impl<B: Backend> Drawable<B> for SqlEditorComponent {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -275,7 +281,11 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
         let editor = StatefulParagraph::new(self.input.iter().collect::<String>())
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL))
-            .style(if focused {Style::default()} else {Style::default().fg(Color::DarkGray)});
+            .style(if focused {
+                Style::default()
+            } else {
+                Style::default().fg(Color::DarkGray)
+            });
 
         f.render_stateful_widget(editor, layout[0], &mut self.paragraph_state);
 
@@ -328,9 +338,11 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
 impl Component for SqlEditorComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut GlobalMessageQueue) -> Result<EventState> {
-
-
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut GlobalMessageQueue,
+    ) -> Result<EventState> {
         // if key == self.key_config.focus_above && matches!(self.focus, Focus::Table) {
         //     self.focus = Focus::Editor
         // } else if key == self.key_config.enter {
@@ -338,9 +350,7 @@ impl Component for SqlEditorComponent {
         // }
 
         return match self.focus {
-            Focus::Editor => {
-                self.editor_key_event(key, message_queue).await
-            }
+            Focus::Editor => self.editor_key_event(key, message_queue).await,
             Focus::Table => {
                 if key == self.key_config.focus_above {
                     self.focus = Focus::Editor;
@@ -348,6 +358,6 @@ impl Component for SqlEditorComponent {
                 }
                 self.table.event(key, message_queue).await
             }
-        }
+        };
     }
 }

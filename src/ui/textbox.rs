@@ -3,17 +3,17 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use log::{debug, error};
 use tui::backend::Backend;
-use tui::Frame;
 use tui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use tui::style::{Color, Style};
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, Paragraph};
+use tui::Frame;
 use unicode_width::UnicodeWidthStr;
 
-use crate::components::*;
 use crate::components::EventState::{Consumed, NotConsumed};
-use crate::Key;
+use crate::components::*;
 use crate::ui::ComponentStyles;
+use crate::Key;
 
 struct PatternPosition {
     index: usize,
@@ -27,12 +27,14 @@ fn find_last_separator(input: &String) -> Option<PatternPosition> {
     } else if let Ok(pattern) = &pattern_res {
         if let Some(ma) = pattern.find_iter(input.as_str()).last() {
             debug!("Last match in input string found {:?}", ma);
-            return Some(PatternPosition { index: ma.start(), length: ma.end() - ma.start() });
+            return Some(PatternPosition {
+                index: ma.start(),
+                length: ma.end() - ma.start(),
+            });
         }
     }
     return None;
 }
-
 
 #[derive(Debug)]
 pub struct TextBox {
@@ -79,7 +81,10 @@ impl TextBox {
     pub fn last_word_part(&self) -> Option<String> {
         let input_str: String = self.input[..self.input_cursor_position].iter().collect();
         if let Some(pat_ind) = find_last_separator(&input_str) {
-            let last_word_part: String = self.input[(pat_ind.index + pat_ind.length)..self.input_cursor_position].iter().collect();
+            let last_word_part: String = self.input
+                [(pat_ind.index + pat_ind.length)..self.input_cursor_position]
+                .iter()
+                .collect();
             return Some(last_word_part);
         }
         return Some(input_str);
@@ -101,16 +106,18 @@ impl TextBox {
 
     pub fn cursor_position(&self, area: &Rect) -> (u16, u16) {
         let label_length: usize = if let Some(label) = &self.label {
-            label.chars().map(|c| compute_character_width(&c) as usize).sum()
+            label
+                .chars()
+                .map(|c| compute_character_width(&c) as usize)
+                .sum()
         } else {
             0
         };
 
-        let curs_x_offset: usize =
-            (0..self.input_cursor_position)
-                .map(|index| compute_character_width(&self.input[index as usize]) as usize)
-                .sum::<usize>() +
-                label_length;
+        let curs_x_offset: usize = (0..self.input_cursor_position)
+            .map(|index| compute_character_width(&self.input[index as usize]) as usize)
+            .sum::<usize>()
+            + label_length;
         let cursor_y_pos = area.y + (area.height / 2);
 
         return ((area.x + curs_x_offset as u16) + 1, cursor_y_pos);
@@ -120,7 +127,7 @@ impl TextBox {
         let input_str: String = self.input[..self.input_cursor_position].iter().collect();
         if let Some(pat_ind) = find_last_separator(&input_str) {
             let text = text.into();
-            let prefix = &self.input[0..pat_ind.index+pat_ind.length];
+            let prefix = &self.input[0..pat_ind.index + pat_ind.length];
             self.input = prefix.iter().map(|c| *c).chain(text.chars()).collect();
             self.input_cursor_position = self.input.len();
         }
@@ -131,25 +138,35 @@ impl DrawableComponent for TextBox {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         // debug!("Drawing textbox {:?} \nwith area {:?}", self, area);
         let label_length: usize = if let Some(label) = &self.label {
-            label.chars().map(|c| compute_character_width(&c) as usize).sum()
+            label
+                .chars()
+                .map(|c| compute_character_width(&c) as usize)
+                .sum()
         } else {
             0
         };
 
-
         // TODO: Implement text-align
-        let text_field_block = Block::default()
-            .borders(Borders::ALL)
-            .style(if focused { Style::default() } else { Style::default().fg(Color::DarkGray) });
+        let text_field_block = Block::default().borders(Borders::ALL).style(if focused {
+            Style::default()
+        } else {
+            Style::default().fg(Color::DarkGray)
+        });
         f.render_widget(text_field_block, area);
 
-        let mut text_rect = area.inner(&Margin { vertical: 1, horizontal: 1 });
+        let mut text_rect = area.inner(&Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
 
         if let Some(label) = &self.label {
             let label = Paragraph::new(label.as_str()).style(Style::default().fg(Color::LightBlue));
             let areas = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints(vec![Constraint::Length(label_length as u16), Constraint::Length(area.width - label_length as u16)])
+                .constraints(vec![
+                    Constraint::Length(label_length as u16),
+                    Constraint::Length(area.width - label_length as u16),
+                ])
                 .split(text_rect);
             let label_rect = areas[0];
             text_rect = areas[1];
@@ -159,12 +176,17 @@ impl DrawableComponent for TextBox {
         let text = Paragraph::new(Spans::from(format!(
             "{:w$}",
             if self.input.is_empty() {
-                if let Some(placeholder) = &self.placeholder { placeholder.clone() } else { "".to_string() }
+                if let Some(placeholder) = &self.placeholder {
+                    placeholder.clone()
+                } else {
+                    "".to_string()
+                }
             } else {
                 self.input_str()
             },
             w = text_rect.width as usize
-        ))).style(if focused && !self.input.is_empty() {
+        )))
+        .style(if focused && !self.input.is_empty() {
             Style::default()
         } else {
             Style::default().fg(Color::DarkGray)
@@ -173,10 +195,7 @@ impl DrawableComponent for TextBox {
 
         let cursor_pos = self.cursor_position(&area);
         if focused {
-            f.set_cursor(
-                cursor_pos.0,
-                cursor_pos.1,
-            )
+            f.set_cursor(cursor_pos.0, cursor_pos.1)
         }
         Ok(())
     }
@@ -186,7 +205,11 @@ impl DrawableComponent for TextBox {
 impl Component for TextBox {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         return match key {
             Key::Char(c) => {
                 self.input.insert(self.input_cursor_position, c);
@@ -195,8 +218,9 @@ impl Component for TextBox {
                 Ok(EventState::Consumed)
             }
             Key::Delete => {
-                if !self.input.is_empty() &&
-                    self.input_cursor_position as usize <= self.input.len().saturating_sub(1) {
+                if !self.input.is_empty()
+                    && self.input_cursor_position as usize <= self.input.len().saturating_sub(1)
+                {
                     self.input.remove(self.input_cursor_position);
                 }
                 Ok(Consumed)
@@ -210,9 +234,7 @@ impl Component for TextBox {
             }
             Key::Left => {
                 if !self.input.is_empty() && self.input_cursor_position > 0 {
-                    self.input_cursor_position = self
-                        .input_cursor_position
-                        .saturating_sub(1);
+                    self.input_cursor_position = self.input_cursor_position.saturating_sub(1);
                 }
                 Ok(EventState::Consumed)
             }

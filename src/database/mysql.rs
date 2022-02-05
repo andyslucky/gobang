@@ -3,15 +3,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use futures::TryStreamExt;
+use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{Column as _, Row as _};
-use sqlx::mysql::{MySqlPoolOptions};
 
 use database_tree::{Child, Database, Table};
 
-use crate::{pool_exec_impl};
-use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
+use crate::database::{convert_column_val_to_str, Column, Constraint, ForeignKey, Index};
+use crate::pool_exec_impl;
 
-use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
+use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
 
 pub struct MySqlPool {
     pool: sqlx::mysql::MySqlPool,
@@ -160,7 +160,7 @@ impl Pool for MySqlPool {
             constraints.push(Box::new(Constraint {
                 name: row.try_get("CONSTRAINT_NAME")?,
                 column_name: row.try_get("COLUMN_NAME")?,
-                origin: None
+                origin: None,
             }))
         }
         Ok(constraints)

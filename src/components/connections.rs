@@ -4,19 +4,18 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tui::{
     backend::Backend,
-    Frame,
     layout::Rect,
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
+    Frame,
 };
 
-use crate::app::{AppMessage};
+use crate::app::AppMessage;
 use crate::components::command::CommandInfo;
 
 use crate::components::Drawable;
 use crate::config::{Connection, KeyConfig};
-
 
 use super::{Component, EventState};
 
@@ -99,7 +98,7 @@ impl ConnectionsComponent {
     }
 }
 
-impl<B : Backend > Drawable<B> for ConnectionsComponent {
+impl<B: Backend> Drawable<B> for ConnectionsComponent {
     fn draw(&mut self, f: &mut Frame<B>, _area: Rect, _focused: bool) -> Result<()> {
         let width = 80;
         let height = 20;
@@ -129,13 +128,15 @@ impl<B : Backend > Drawable<B> for ConnectionsComponent {
     }
 }
 
-
-
 #[async_trait]
 impl Component for ConnectionsComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if key == self.key_config.scroll_down {
             self.next_connection(1);
             return Ok(EventState::Consumed);
@@ -156,7 +157,9 @@ impl Component for ConnectionsComponent {
             return Ok(EventState::Consumed);
         } else if key == self.key_config.enter {
             if let Some(conn) = self.selected_connection() {
-                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(Some(conn.clone()))));
+                message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(Some(
+                    conn.clone(),
+                ))));
                 return Ok(EventState::Consumed);
             } else {
                 message_queue.push(Box::new(ConnectionEvent::ConnectionChanged(None)));

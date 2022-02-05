@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tui::{backend::Backend, Frame, layout::Rect};
+use tui::{backend::Backend, layout::Rect, Frame};
 use unicode_width::UnicodeWidthChar;
 
 pub use command::{CommandInfo, CommandText};
@@ -23,7 +23,7 @@ pub use table_filter::TableFilterComponent;
 pub use table_status::TableStatusComponent;
 pub use table_value::TableValueComponent;
 
-use crate::app::{AppMessage};
+use crate::app::AppMessage;
 
 pub mod command;
 pub mod completion;
@@ -83,7 +83,7 @@ pub trait DrawableComponent {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
 }
 
-pub trait Drawable<B : Backend> {
+pub trait Drawable<B: Backend> {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()>;
 }
 
@@ -98,18 +98,22 @@ pub trait MovableComponent {
     ) -> Result<()>;
 }
 
-
-
 /// base component trait
 #[async_trait]
 pub trait Component {
     fn commands(&self, out: &mut Vec<CommandInfo>);
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState>;
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState>;
 
-    async fn handle_messages(&mut self, _messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {Ok(())}
+    async fn handle_messages(&mut self, _messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        Ok(())
+    }
 
-    fn reset(&mut self){}
+    fn reset(&mut self) {}
 
     fn focused(&self) -> bool {
         false

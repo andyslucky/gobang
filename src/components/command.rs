@@ -52,8 +52,6 @@ impl CommandInfo {
     }
 }
 
-
-
 pub fn scroll(key: &KeyConfig) -> CommandText {
     CommandText::new(
         format!(
