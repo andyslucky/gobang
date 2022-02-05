@@ -16,7 +16,7 @@ use super::{Component, EventState, MovableComponent};
 
 const RESERVED_WORDS_IN_WHERE_CLAUSE: &[&str] = &["IN", "AND", "OR", "NOT", "NULL", "IS"];
 const ALL_RESERVED_WORDS: &[&str] = &[
-    "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE",
+    "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT","INSERT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE","LIKE"
 ];
 
 pub struct CompletionComponent {
@@ -42,7 +42,7 @@ impl CompletionComponent {
 
     pub fn update<S : Into<String>>(&mut self, word_part: S) {
         self.word = word_part.into();
-        let pattern_res = regex::Regex::new(format!("^{}", self.word).as_str());
+        let pattern_res = regex::Regex::new(format!("(?i)^{}", self.word).as_str());
         self.state.select(None);
         if let Err(e) = &pattern_res {
             error!("Error compiling pattern {}",e);
@@ -143,6 +143,11 @@ impl Component for CompletionComponent {
 
     fn is_visible(&self) -> bool {
         return !self.word.is_empty();
+    }
+
+    fn reset(&mut self) {
+        self.word = "".to_string();
+        self.state.select(None);
     }
 }
 

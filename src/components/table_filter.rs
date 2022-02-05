@@ -57,12 +57,9 @@ impl TableFilterComponent {
     pub fn reset(&mut self) {
         self.table = None;
         self.text_box.reset();
+        self.completion.reset();
     }
 
-    fn complete(&mut self) -> anyhow::Result<EventState> {
-
-        Ok(EventState::NotConsumed)
-    }
 }
 
 impl<B : Backend> Drawable<B> for TableFilterComponent {
@@ -93,7 +90,7 @@ impl Component for TableFilterComponent {
         if key == Key::Enter && self.completion.is_visible(){
             if let Some(candidate) = self.completion.selected_candidate() {
                 self.text_box.replace_last_word_part(candidate);
-                self.completion.update("");
+                self.completion.reset();
                 return Ok(Consumed);
             }
         }

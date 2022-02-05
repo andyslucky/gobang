@@ -31,7 +31,9 @@ pub struct RecordTableComponent {
     pub table: TableComponent,
     pub focus: Focus,
     key_config: KeyConfig,
-    shared_pool : SharedPool
+    shared_pool : SharedPool,
+    database : Option<Database>,
+    dtable : Option<DTable>
 }
 
 impl<B: Backend> Drawable<B> for RecordTableComponent {
@@ -69,7 +71,9 @@ impl RecordTableComponent {
             table: TableComponent::new(key_config.clone()),
             focus: Focus::Table,
             key_config,
-            shared_pool
+            shared_pool,
+            database : None,
+            dtable : None
         }
     }
 
@@ -78,19 +82,29 @@ impl RecordTableComponent {
         database: Database,
         table: DTable,
     ) -> Result<()> {
+        self.database = Some(database);
+        self.dtable = Some(table);
+        self.reload_results_table().await
+    }
 
-        let mut headers : Vec<String> = vec![];
-        let mut rows : Vec<Vec<String>> = vec![];
-        if let Some(pool) = self.shared_pool.read().await.as_ref() {
-            let filter = self.filter.input_str();
-            let res = pool
-                .get_records(&database, &table, 0, if filter.is_empty() {None} else {Some(filter)})
-                .await?;
-            headers = res.0;
-            rows = res.1;
+    async fn reload_results_table(&mut self) -> Result<()>{
+        if let Some(database) = &self.database {
+            if let Some(table) = &self.dtable {
+                let mut headers : Vec<String> = vec![];
+                let mut rows : Vec<Vec<String>> = vec![];
+                if let Some(pool) = self.shared_pool.read().await.as_ref() {
+                    let filter = self.filter.input_str();
+                    let res = pool
+                        .get_records(database, table, 0, if filter.is_empty() {None} else {Some(filter)})
+                        .await?;
+                    headers = res.0;
+                    rows = res.1;
+                }
+                self.table.update(rows, headers, database.clone(), table.clone());
+                self.filter.set_table(table.clone());
+            }
         }
-        self.table.update(rows, headers, database, table.clone());
-        self.filter.set_table(table);
+
         Ok(())
     }
 
@@ -121,6 +135,8 @@ impl Component for RecordTableComponent {
                     Ok(Consumed)
                 } else {
                     if key == Key::Enter {
+                        // run filter
+                        self.reload_results_table().await?;
                         self.focus = Focus::Table;
                     }
                     Ok(Consumed)
