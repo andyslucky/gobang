@@ -627,6 +627,7 @@ dependencies = [
  "log",
  "log4rs",
  "pretty_assertions",
+ "regex",
  "rust_decimal",
  "serde",
  "serde_json",

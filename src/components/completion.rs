@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use log::{debug, error};
 use tui::{
     backend::Backend,
     Frame,
@@ -7,6 +8,7 @@ use tui::{
     style::{Color, Style},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
+use crate::app::{AppMessage, SharedPool};
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
 
@@ -22,9 +24,11 @@ pub struct CompletionComponent {
     state: ListState,
     word: String,
     candidates: Vec<String>,
+    // shared_pool : SharedPool
 }
 
 impl CompletionComponent {
+
     pub fn new(key_config: KeyConfig, word: impl Into<String>, all: bool) -> Self {
         Self {
             key_config,
@@ -41,53 +45,46 @@ impl CompletionComponent {
         }
     }
 
-    pub fn update(&mut self, word: impl Into<String>) {
-        self.word = word.into();
+
+    pub fn update<S : Into<String>>(&mut self, word_part: S) {
+        self.word = word_part.into();
+        let pattern_res = regex::Regex::new(self.word.as_str());
         self.state.select(None);
-        self.state.select(Some(0))
+        if let Err(e) = &pattern_res {
+            error!("Error compiling pattern {}",e);
+        } else if let Ok(patt) = &pattern_res {
+            self.candidates = ALL_RESERVED_WORDS.iter().filter(|kw| patt.is_match(kw)).map(|kw| String::from(*kw)).collect();
+            debug!("Filtered candidates {:?}", self.candidates);
+            if !self.candidates.is_empty() {
+                self.state.select(Some(0));
+            }
+        }
+    }
+
+    fn change_selection(&mut self, offset : i32) {
+        if let Some(i) = self.state.selected() {
+            let new_selected_index = (i as i32 + offset) as usize;
+            if new_selected_index >= 0 && new_selected_index < self.candidates.len() {
+                self.state.select(Some(new_selected_index));
+            }
+        }
     }
 
     fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.filterd_candidates().count() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
+        self.change_selection(1);
     }
 
     fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.filterd_candidates().count() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
+        self.change_selection(-1);
     }
 
-    fn filterd_candidates(&self) -> impl Iterator<Item = &String> {
-        self.candidates.iter().filter(move |c| {
-            (c.starts_with(self.word.to_lowercase().as_str())
-                || c.starts_with(self.word.to_uppercase().as_str()))
-                && !self.word.is_empty()
-        })
-    }
 
     pub fn selected_candidate(&self) -> Option<String> {
-        self.filterd_candidates()
-            .collect::<Vec<&String>>()
-            .get(self.state.selected()?)
-            .map(|c| c.to_string())
+       if let Some(index) = self.state.selected() {
+           Some(self.candidates[index].clone())
+       } else {
+           None
+       }
     }
 
     pub fn word(&self) -> String {
@@ -107,24 +104,25 @@ impl MovableComponent for CompletionComponent {
         if !self.word.is_empty() {
             let width = 30;
             let candidates = self
-                .filterd_candidates()
+                .candidates
+                .iter()
                 .map(|c| ListItem::new(c.to_string()))
                 .collect::<Vec<ListItem>>();
-            if candidates.clone().is_empty() {
+            let cand_len = candidates.len();
+            if candidates.is_empty() {
                 return Ok(());
             }
-            let candidate_list = List::new(candidates.clone())
+            let candidate_list = List::new(candidates)
                 .block(Block::default().borders(Borders::ALL))
                 .highlight_style(Style::default().bg(Color::Blue))
                 .style(Style::default());
 
             let area = Rect::new(
-                area.x + x,
-                area.y + y + 2,
+                x, y,
                 width
                     .min(f.size().width)
                     .min(f.size().right().saturating_sub(area.x + x)),
-                (candidates.len().min(5) as u16 + 2)
+                (cand_len.min(5) as u16 + 2)
                     .min(f.size().bottom().saturating_sub(area.y + y + 2)),
             );
             f.render_widget(Clear, area);
@@ -148,46 +146,50 @@ impl Component for CompletionComponent {
         }
         Ok(EventState::NotConsumed)
     }
-}
 
-#[cfg(test)]
-mod test {
-    use super::{CompletionComponent, KeyConfig};
-
-    #[test]
-    fn test_filterd_candidates_lowercase() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "an", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"AND".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_filterd_candidates_uppercase() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "AN", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"AND".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_filterd_candidates_multiple_candidates() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "n", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"NOT".to_string(), &"NULL".to_string()]
-        );
-
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "N", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"NOT".to_string(), &"NULL".to_string()]
-        );
+    fn is_visible(&self) -> bool {
+        return !self.word.is_empty();
     }
 }
+
+// #[cfg(test)]
+// mod test {
+//     use super::{CompletionComponent, KeyConfig};
+//
+//     #[test]
+//     fn test_filterd_candidates_lowercase() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "an", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"AND".to_string()]
+//         );
+//     }
+//
+//     #[test]
+//     fn test_filterd_candidates_uppercase() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "AN", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"AND".to_string()]
+//         );
+//     }
+//
+//     #[test]
+//     fn test_filterd_candidates_multiple_candidates() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "n", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"NOT".to_string(), &"NULL".to_string()]
+//         );
+//
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "N", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"NOT".to_string(), &"NULL".to_string()]
+//         );
+//     }
+// }
