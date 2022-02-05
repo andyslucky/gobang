@@ -24,6 +24,7 @@ pub struct CompletionComponent {
     state: ListState,
     word: String,
     candidates: Vec<String>,
+
     // shared_pool : SharedPool
 }
 
@@ -34,21 +35,14 @@ impl CompletionComponent {
             key_config,
             state: ListState::default(),
             word: word.into(),
-            candidates: if all {
-                ALL_RESERVED_WORDS.iter().map(|w| w.to_string()).collect()
-            } else {
-                RESERVED_WORDS_IN_WHERE_CLAUSE
-                    .iter()
-                    .map(|w| w.to_string())
-                    .collect()
-            },
+            candidates: vec![]
         }
     }
 
 
     pub fn update<S : Into<String>>(&mut self, word_part: S) {
         self.word = word_part.into();
-        let pattern_res = regex::Regex::new(self.word.as_str());
+        let pattern_res = regex::Regex::new(format!("^{}", self.word).as_str());
         self.state.select(None);
         if let Err(e) = &pattern_res {
             error!("Error compiling pattern {}",e);
