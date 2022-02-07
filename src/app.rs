@@ -1,7 +1,8 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use database_tree::Table;
+use tokio::sync::{OwnedRwLockReadGuard, RwLock};
 use tui::style::{Color, Style};
 use tui::widgets::Block;
 use tui::{
@@ -10,6 +11,7 @@ use tui::{
     Frame,
 };
 
+use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::connections::ConnectionEvent;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::TabPanel;
@@ -27,7 +29,35 @@ use crate::{
     handle_message,
 };
 
-pub type SharedPool = Arc<RwLock<Option<Box<dyn Pool>>>>;
+#[derive(Default)]
+pub struct AppState {
+    pub shared_pool: Option<Box<dyn Pool>>,
+    pub selected_database: Option<String>,
+    pub selected_table: Option<Table>,
+}
+
+impl AppState {
+    pub async fn pool_completion_src(&self) -> Option<PoolFilterableCompletionSource> {
+        if let Some(pool) = &self.shared_pool {
+            PoolFilterableCompletionSource::new(pool, &self.selected_database, &self.selected_table)
+                .await
+                .ok()
+        } else {
+            None
+        }
+    }
+}
+
+// pub type ReadOnlyAppState = OwnedRwLockReadGuard<AppState>;
+// pub type ReadWriteAppState = OwnedRwLockWriteGuard<AppState>;
+#[derive(Clone)]
+pub struct AppStateRef(Arc<RwLock<AppState>>);
+
+impl AppStateRef {
+    pub async fn read(&self) -> OwnedRwLockReadGuard<AppState> {
+        self.0.clone().read_owned().await
+    }
+}
 
 /// Dynamic trait representing a message/event. Messages may be added to the global event queue during
 /// by any component's event handler. The global message queue will be processed at the end of each key event
@@ -60,12 +90,12 @@ pub enum Focus {
     ConnectionList,
 }
 pub struct App<B: Backend> {
+    app_state: Arc<RwLock<AppState>>,
     focus: Focus,
     tab_panel: TabPanel<B>,
     help: HelpComponent,
     databases: DatabasesComponent,
     connections: ConnectionsComponent,
-    pool: SharedPool,
     left_main_chunk_percentage: u16,
     message_queue: GlobalMessageQueue,
     pub config: Config,
@@ -73,18 +103,21 @@ pub struct App<B: Backend> {
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(config: Config) -> App<B> {
+    pub async fn new(config: Config) -> App<B> {
+        let app_state = Arc::new(RwLock::new(AppState::default()));
         let config_clone = config.clone();
-        let share_pool = Arc::new(RwLock::new(None));
         App {
+            app_state: app_state.clone(),
             config: config.clone(),
             connections: ConnectionsComponent::new(config.key_config.clone(), config.conn),
-            tab_panel: TabPanel::new(config_clone, share_pool.clone()),
+            tab_panel: TabPanel::new(config_clone, AppStateRef(app_state.clone())).await,
             help: HelpComponent::new(config.key_config.clone()),
-            databases: DatabasesComponent::new(config.key_config.clone(), share_pool.clone()),
+            databases: DatabasesComponent::new(
+                config.key_config.clone(),
+                AppStateRef(app_state.clone()),
+            ),
             error: ErrorComponent::new(config.key_config),
             focus: Focus::ConnectionList,
-            pool: share_pool.clone(),
             message_queue: GlobalMessageQueue {
                 event_queue: vec![],
             },
@@ -186,11 +219,11 @@ impl<B: Backend> App<B> {
     }
     async fn on_conn_changed(&mut self, conn: &Connection) {
         if let Some(new_pool) = self.get_pool_from_conn(conn).await.ok() {
-            let mut pool_w_lock = self.pool.write().await;
-            if let Some(current_pool) = pool_w_lock.as_ref() {
+            let mut whandle = self.app_state.write().await;
+            if let Some(current_pool) = &(*whandle).shared_pool {
                 current_pool.close().await;
             }
-            (*pool_w_lock) = Some(new_pool);
+            (*whandle).shared_pool = Some(new_pool);
         }
         self.focus = Focus::DatabaseList;
     }
@@ -203,12 +236,21 @@ impl<B: Backend> App<B> {
             handle_message!(m, ConnectionEvent,
                 ConnectionEvent::ConnectionChanged(conn_opt) => {
                     if let Some(conn) = conn_opt {
+                        {
+                            let mut whandle = self.app_state.write().await;
+                            (*whandle).selected_database = conn.database.clone();
+                        }
                         self.on_conn_changed(conn).await;
                     }
                 }
             );
             handle_message!(m, DatabaseEvent,
-                DatabaseEvent::TableSelected(_,_) => {self.focus = Focus::TabPanel;}
+                DatabaseEvent::TableSelected(database,table) => {
+                    self.focus = Focus::TabPanel;
+                    let mut whandle = self.app_state.write().await;
+                    (*whandle).selected_database = Some(database.name.clone());
+                    (*whandle).selected_table = Some(table.clone());
+                }
             )
         }
         Ok(())

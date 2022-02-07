@@ -15,7 +15,7 @@ use tui::{
     Frame,
 };
 
-use crate::app::{AppMessage, SharedPool};
+use crate::app::{AppMessage, AppStateRef};
 use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
 use crate::components::EventState::{Consumed, NotConsumed};
@@ -242,7 +242,7 @@ pub struct TabPanel<B: Backend> {
     toolbar: TabToolbar,
     tab_components: Vec<Box<dyn Tab<B>>>,
     focus: Focus,
-    shared_pool: SharedPool,
+    app_state: AppStateRef,
 }
 
 impl<B: Backend> Drawable<B> for TabPanel<B> {
@@ -328,7 +328,7 @@ impl<B: Backend> Component for TabPanel<B> {
                 TabMessage::NewEditor => {
                     let num = self.tab_components.len() - 1;
                     let tab_name = format!("Sql Editor {}", num);
-                    let new_editor = SqlEditorComponent::new(self.config.key_config.clone(), self.shared_pool.clone(), Some(tab_name.clone()));
+                    let new_editor = SqlEditorComponent::new(self.config.key_config.clone(), self.app_state.clone(), Some(tab_name.clone())).await;
                     self.tab_components.push(Box::new(new_editor));
                     self.toolbar.add_tab(tab_name);
                 },TabMessage::CloseCurrentEditor => {
@@ -360,15 +360,15 @@ impl<B: Backend> Component for TabPanel<B> {
 }
 
 impl<B: Backend> TabPanel<B> {
-    pub fn new(config: Config, shared_pool: SharedPool) -> TabPanel<B> {
+    pub async fn new(config: Config, app_state: AppStateRef) -> TabPanel<B> {
         let tab_components: Vec<Box<dyn Tab<B>>> = vec![
             Box::new(RecordTableComponent::new(
                 config.key_config.clone(),
-                shared_pool.clone(),
+                app_state.clone(),
             )),
             Box::new(PropertiesComponent::new(
                 config.key_config.clone(),
-                shared_pool.clone(),
+                app_state.clone(),
             )),
         ];
         return TabPanel {
@@ -379,7 +379,7 @@ impl<B: Backend> TabPanel<B> {
             ),
             tab_components,
             focus: Focus::Toolbar,
-            shared_pool,
+            app_state,
         };
     }
 

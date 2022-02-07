@@ -6,11 +6,12 @@ use tui::{
     Frame,
 };
 
-use database_tree::{Database, Table as DTable};
+use database_tree::{Child, Database, Table as DTable};
 
-use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
+use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
 use crate::clipboard::copy_to_clipboard;
 use crate::components::command::CommandInfo;
+use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::databases::DatabaseEvent;
 use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
@@ -31,9 +32,9 @@ pub struct RecordTableComponent {
     pub table: TableComponent,
     pub focus: Focus,
     key_config: KeyConfig,
-    shared_pool: SharedPool,
     database: Option<Database>,
     dtable: Option<DTable>,
+    app_state: AppStateRef,
 }
 
 impl<B: Backend> Drawable<B> for RecordTableComponent {
@@ -63,13 +64,13 @@ impl<B: Backend> Tab<B> for RecordTableComponent {
 }
 
 impl RecordTableComponent {
-    pub fn new(key_config: KeyConfig, shared_pool: SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, app_state: AppStateRef) -> Self {
         Self {
             filter: TableFilterComponent::new(key_config.clone()),
             table: TableComponent::new(key_config.clone()),
             focus: Focus::Table,
             key_config,
-            shared_pool,
+            app_state,
             database: None,
             dtable: None,
         }
@@ -86,7 +87,7 @@ impl RecordTableComponent {
             if let Some(table) = &self.dtable {
                 let mut headers: Vec<String> = vec![];
                 let mut rows: Vec<Vec<String>> = vec![];
-                if let Some(pool) = self.shared_pool.read().await.as_ref() {
+                if let Some(pool) = self.app_state.read().await.shared_pool.as_ref() {
                     let filter = self.filter.input_str();
                     let res = pool
                         .get_records(
@@ -159,10 +160,13 @@ impl Component for RecordTableComponent {
                 TableSelected(database,table) => {
                     self.reset();
                     self.update_table(database.clone(), table.clone()).await?;
+                    let app_rhandle = self.app_state.read().await;
+                    if let Some(src) = (*app_rhandle).pool_completion_src().await {
+                        self.filter.update_completion_src(Box::new(src));
+                    }
                 }
             );
         }
-        // TODO : Add filter message handling
         Ok(())
     }
 }

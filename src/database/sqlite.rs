@@ -61,6 +61,7 @@ impl Pool for SqlitePool {
                 update_time: None,
                 engine: None,
                 schema: None,
+                database: None,
             })
         }
         Ok(tables.into_iter().map(|table| table.into()).collect())
@@ -107,17 +108,13 @@ impl Pool for SqlitePool {
         Ok((headers, records))
     }
 
-    async fn get_columns(
-        &self,
-        _database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>> {
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>> {
         let query = format!("SELECT * FROM pragma_table_info('{}');", table.name);
         let mut rows = sqlx::query(query.as_str()).fetch(&self.pool);
-        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut columns: Vec<Column> = vec![];
         while let Some(row) = rows.try_next().await? {
             let null: Option<i16> = row.try_get("notnull")?;
-            columns.push(Box::new(Column {
+            columns.push(Column {
                 name: row.try_get("name")?,
                 r#type: row.try_get("type")?,
                 null: if matches!(null, Some(null) if null == 1) {
@@ -127,7 +124,7 @@ impl Pool for SqlitePool {
                 },
                 default: row.try_get("dflt_value")?,
                 comment: None,
-            }))
+            })
         }
         Ok(columns)
     }

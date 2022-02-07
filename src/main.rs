@@ -18,6 +18,7 @@ mod components;
 mod config;
 mod database;
 mod event;
+mod sql_utils;
 mod ui;
 mod version;
 
@@ -32,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
     let events = event::Events::new(250);
-    let mut app = App::new(config.clone());
+    let mut app = App::new(config.clone()).await;
 
     terminal.clear()?;
 

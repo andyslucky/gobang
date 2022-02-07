@@ -466,7 +466,7 @@ impl<B: Backend> Drawable<B> for TableComponent {
             let cells = item.iter().enumerate().map(|(column_index, c)| {
                 Cell::from(c.to_string()).style(
                     if self.is_selected_cell(row_index, column_index, selected_column_index) {
-                        Style::default().bg(Color::Blue)
+                        Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                     } else if self.is_number_column(row_index, column_index) {
                         Style::default().add_modifier(Modifier::BOLD)
                     } else {

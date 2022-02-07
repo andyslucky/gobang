@@ -55,7 +55,7 @@ impl Pool for PostgresPool {
     async fn get_tables(&self, database: String) -> anyhow::Result<Vec<Child>> {
         let mut rows =
             sqlx::query("SELECT * FROM information_schema.tables WHERE table_catalog = $1")
-                .bind(database)
+                .bind(database.clone())
                 .fetch(&self.pool);
         let mut tables = Vec::new();
         while let Some(row) = rows.try_next().await? {
@@ -65,6 +65,7 @@ impl Pool for PostgresPool {
                 update_time: None,
                 engine: None,
                 schema: row.try_get("table_schema")?,
+                database: Some(database.clone()),
             })
         }
         let mut schemas = vec![];
@@ -165,11 +166,11 @@ impl Pool for PostgresPool {
         Ok((headers, records))
     }
 
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>> {
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>> {
+        let database_name = table.clone().database.ok_or(anyhow::Error::msg(format!(
+            "No database found containing table {}",
+            table.name
+        )))?;
         let table_schema = table
             .schema
             .as_ref()
@@ -177,17 +178,17 @@ impl Pool for PostgresPool {
         let mut rows = sqlx::query(
             "SELECT * FROM information_schema.columns WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3"
         )
-        .bind(&database.name).bind(table_schema).bind(&table.name)
+        .bind(database_name).bind(table_schema).bind(&table.name)
         .fetch(&self.pool);
-        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut columns: Vec<Column> = vec![];
         while let Some(row) = rows.try_next().await? {
-            columns.push(Box::new(Column {
+            columns.push(Column {
                 name: row.try_get("column_name")?,
                 r#type: row.try_get("data_type")?,
                 null: row.try_get("is_nullable")?,
                 default: row.try_get("column_default")?,
                 comment: None,
-            }))
+            })
         }
         Ok(columns)
     }

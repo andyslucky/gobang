@@ -62,6 +62,7 @@ impl Pool for MySqlPool {
                 update_time: row.try_get("Update_time")?,
                 engine: row.try_get("Engine")?,
                 schema: None,
+                database: Some(database.clone()),
             })
         }
         Ok(tables.into_iter().map(|table| table.into()).collect())
@@ -110,25 +111,25 @@ impl Pool for MySqlPool {
         Ok((headers, records))
     }
 
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>> {
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>> {
+        let database_name = table.clone().database.ok_or(anyhow::Error::msg(format!(
+            "No database found containing table {}",
+            table.name
+        )))?;
         let query = format!(
             "SHOW FULL COLUMNS FROM `{}`.`{}`",
-            database.name, table.name
+            database_name, table.name
         );
         let mut rows = sqlx::query(query.as_str()).fetch(&self.pool);
-        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut columns: Vec<Column> = vec![];
         while let Some(row) = rows.try_next().await? {
-            columns.push(Box::new(Column {
+            columns.push(Column {
                 name: row.try_get("Field")?,
                 r#type: row.try_get("Type")?,
                 null: row.try_get("Null")?,
                 default: row.try_get("Default")?,
                 comment: row.try_get("Comment")?,
-            }))
+            })
         }
         Ok(columns)
     }

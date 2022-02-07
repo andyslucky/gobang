@@ -12,13 +12,17 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+use crate::app::AppMessage;
 use database_tree::Table;
 
 use crate::components::command::CommandInfo;
+use crate::components::completion::FilterableCompletionSource;
+use crate::components::databases::DatabaseEvent;
 use crate::components::EventState::{Consumed, NotConsumed};
 use crate::components::{Drawable, DrawableComponent};
 use crate::config::KeyConfig;
 use crate::event::Key;
+use crate::handle_message;
 use crate::ui::textbox::TextBox;
 use crate::ui::ComponentStyles;
 
@@ -61,6 +65,10 @@ impl TableFilterComponent {
         self.text_box.reset();
         self.completion.reset();
     }
+
+    pub fn update_completion_src(&mut self, src: Box<dyn FilterableCompletionSource>) {
+        self.completion.completion_source = src;
+    }
 }
 
 impl<B: Backend> Drawable<B> for TableFilterComponent {
@@ -98,8 +106,9 @@ impl Component for TableFilterComponent {
             return Ok(Consumed);
         }
 
-        if key == Key::Enter && self.completion.is_visible() {
+        if (key == Key::Enter || key == Key::Tab) && self.completion.is_visible() {
             if let Some(candidate) = self.completion.selected_candidate() {
+                debug!("Auto completing word with candidate {}", candidate);
                 self.text_box.replace_last_word_part(candidate);
                 self.completion.reset();
                 return Ok(Consumed);

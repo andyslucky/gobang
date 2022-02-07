@@ -112,7 +112,7 @@ impl<B: Backend> Drawable<B> for ConnectionsComponent {
         }
         let connections = List::new(connections)
             .block(Block::default().borders(Borders::ALL).title("Connections"))
-            .highlight_style(Style::default().bg(Color::Blue))
+            .highlight_style(Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b)))
             .style(Style::default());
 
         let area = Rect::new(

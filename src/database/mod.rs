@@ -20,6 +20,7 @@ pub const RECORDS_LIMIT_PER_PAGE: u8 = 200;
 pub trait Pool: Send + Sync {
     async fn execute(&self, query: &String) -> anyhow::Result<ExecuteResult>;
     async fn get_databases(&self) -> anyhow::Result<Vec<Database>>;
+    // TODO: Change argument to &String
     async fn get_tables(&self, database: String) -> anyhow::Result<Vec<Child>>;
     async fn get_records(
         &self,
@@ -28,11 +29,7 @@ pub trait Pool: Send + Sync {
         page: u16,
         filter: Option<String>,
     ) -> anyhow::Result<(Vec<String>, Vec<Vec<String>>)>;
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>>;
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>>;
     async fn get_constraints(
         &self,
         database: &Database,
@@ -49,6 +46,16 @@ pub trait Pool: Send + Sync {
         table: &Table,
     ) -> anyhow::Result<Vec<Box<dyn TableRow>>>;
     async fn close(&self);
+
+    async fn get_keywords(&self) -> anyhow::Result<Vec<String>> {
+        Ok(vec![
+            "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE", "FROM",
+            "LIMIT", "WHERE", "LIKE",
+        ]
+        .into_iter()
+        .map(|s| String::from(s))
+        .collect())
+    }
 }
 
 pub enum ExecuteResult {
@@ -68,11 +75,11 @@ pub trait TableRow: std::marker::Send {
 }
 
 pub struct Column {
-    name: Option<String>,
-    r#type: Option<String>,
-    null: Option<String>,
-    default: Option<String>,
-    comment: Option<String>,
+    pub name: Option<String>,
+    pub r#type: Option<String>,
+    pub null: Option<String>,
+    pub default: Option<String>,
+    pub comment: Option<String>,
 }
 
 impl TableRow for Column {
@@ -249,6 +256,7 @@ macro_rules! pool_exec_impl {
                 update_time: None,
                 engine: None,
                 schema: None,
+                database: None,
             },
         });
     };

@@ -13,28 +13,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::components::EventState::{Consumed, NotConsumed};
 use crate::components::*;
 use crate::ui::ComponentStyles;
-use crate::Key;
-
-struct PatternPosition {
-    index: usize,
-    length: usize,
-}
-
-fn find_last_separator(input: &String) -> Option<PatternPosition> {
-    let pattern_res = regex::Regex::new(r#"[\s+.\-/*\(\)=]"#);
-    if let Err(e) = &pattern_res {
-        error!("Could not compile pattern {}", e);
-    } else if let Ok(pattern) = &pattern_res {
-        if let Some(ma) = pattern.find_iter(input.as_str()).last() {
-            debug!("Last match in input string found {:?}", ma);
-            return Some(PatternPosition {
-                index: ma.start(),
-                length: ma.end() - ma.start(),
-            });
-        }
-    }
-    return None;
-}
+use crate::{sql_utils, Key};
 
 #[derive(Debug)]
 pub struct TextBox {
@@ -80,7 +59,7 @@ impl TextBox {
     /// Returns the text in the input buffer after the last separator (punctuation, operators, etc.)
     pub fn last_word_part(&self) -> Option<String> {
         let input_str: String = self.input[..self.input_cursor_position].iter().collect();
-        if let Some(pat_ind) = find_last_separator(&input_str) {
+        if let Some(pat_ind) = sql_utils::find_last_separator(&input_str) {
             let last_word_part: String = self.input
                 [(pat_ind.index + pat_ind.length)..self.input_cursor_position]
                 .iter()
@@ -125,12 +104,14 @@ impl TextBox {
 
     pub fn replace_last_word_part<S: Into<String>>(&mut self, text: S) {
         let input_str: String = self.input[..self.input_cursor_position].iter().collect();
-        if let Some(pat_ind) = find_last_separator(&input_str) {
+        if let Some(pat_ind) = sql_utils::find_last_separator(&input_str) {
             let text = text.into();
             let prefix = &self.input[0..pat_ind.index + pat_ind.length];
             self.input = prefix.iter().map(|c| *c).chain(text.chars()).collect();
-            self.input_cursor_position = self.input.len();
+        } else {
+            self.input = text.into().chars().collect();
         }
+        self.input_cursor_position = self.input.len();
     }
 }
 
@@ -160,7 +141,8 @@ impl DrawableComponent for TextBox {
         });
 
         if let Some(label) = &self.label {
-            let label = Paragraph::new(label.as_str()).style(Style::default().fg(Color::LightBlue));
+            let label = Paragraph::new(label.as_str())
+                .style(Style::default().fg(Color::Rgb(0xea, 0x59, 0x0b)));
             let areas = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints(vec![
@@ -225,6 +207,19 @@ impl Component for TextBox {
                 }
                 Ok(Consumed)
             }
+
+            Key::Ctrl('\u{08}') => {
+                let input_str: String = self.input.clone().into_iter().collect();
+                if let Some(pos) = sql_utils::find_last_separator(&input_str) {
+                    self.input = self.input[0..pos.index].into();
+                    self.input_cursor_position = pos.index;
+                } else {
+                    self.input.clear();
+                    self.input_cursor_position = 0;
+                }
+                Ok(Consumed)
+            }
+
             Key::Backspace => {
                 if !self.input.is_empty() && self.input_cursor_position > 0 {
                     self.input_cursor_position -= 1;
@@ -252,6 +247,7 @@ impl Component for TextBox {
                 self.input_cursor_position = self.input.len();
                 Ok(EventState::Consumed)
             }
+
             _ => Ok(NotConsumed),
         };
     }

@@ -1,6 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use database_tree::{Child, Database, Table};
+use futures::{join, try_join};
 use log::{debug, error};
+use std::pin::Pin;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -9,9 +12,10 @@ use tui::{
     Frame,
 };
 
-use crate::app::{AppMessage, SharedPool};
+use crate::app::AppMessage;
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
+use crate::database::{Column, Pool};
 
 use super::{Component, EventState, MovableComponent};
 
@@ -26,6 +30,78 @@ pub trait FilterableCompletionSource: Send + Sync {
         &self,
         last_word_part: &String,
     ) -> anyhow::Result<Vec<String>>;
+}
+
+pub struct PoolFilterableCompletionSource {
+    pub tables: Vec<Table>,
+    pub columns: Vec<String>,
+    pub databases: Vec<Database>,
+    pub key_words: Vec<String>,
+}
+
+impl PoolFilterableCompletionSource {
+    pub async fn new(
+        pool: &Box<dyn Pool>,
+        database: &Option<String>,
+        table: &Option<Table>,
+    ) -> anyhow::Result<Self> {
+        let (columns, tables, databases, key_words): (
+            Vec<Column>,
+            Vec<Child>,
+            Vec<Database>,
+            Vec<String>,
+        ) = try_join!(
+            async {
+                if let Some(t) = table {
+                    pool.get_columns(t).await
+                } else {
+                    Ok(vec![])
+                }
+            },
+            async {
+                if let Some(db) = database {
+                    pool.get_tables(db.clone()).await
+                } else {
+                    Ok(vec![])
+                }
+            },
+            pool.get_databases(),
+            pool.get_keywords()
+        )?;
+        let tables = tables
+            .into_iter()
+            .map_while(|c| {
+                if let Child::Table(t) = c {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let columns = columns.into_iter().map_while(|c| c.name).collect();
+        return Ok(Self {
+            tables,
+            columns,
+            databases,
+            key_words,
+        });
+    }
+}
+
+#[async_trait]
+impl FilterableCompletionSource for PoolFilterableCompletionSource {
+    async fn suggested_completion_items(&self, last_word_part: &String) -> Result<Vec<String>> {
+        let pattern = regex::Regex::new(format!("(?i)^{}", last_word_part).as_str())?;
+        Ok(self
+            .tables
+            .iter()
+            .map(|t| t.name.clone())
+            .chain(self.columns.clone().into_iter())
+            .chain(self.databases.iter().map(|d| d.name.clone()))
+            .chain(self.key_words.clone().into_iter())
+            .filter(|name| pattern.is_match(name))
+            .collect())
+    }
 }
 
 struct DefaultFilterableCompletionSource {
@@ -71,7 +147,7 @@ pub struct CompletionComponent {
     state: ListState,
     word: String,
     candidates: Vec<String>,
-    completion_source: Box<dyn FilterableCompletionSource>, // shared_pool : SharedPool
+    pub completion_source: Box<dyn FilterableCompletionSource>, // shared_pool : SharedPool
 }
 
 impl CompletionComponent {
@@ -155,7 +231,7 @@ impl MovableComponent for CompletionComponent {
             }
             let candidate_list = List::new(candidates)
                 .block(Block::default().borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::Blue))
+                .highlight_style(Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b)))
                 .style(Style::default());
 
             let area = Rect::new(

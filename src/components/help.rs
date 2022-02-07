@@ -162,7 +162,7 @@ impl HelpComponent {
                 txt.push(Spans::from(Span::styled(
                     format!(" {}{:w$}", command_info.text.name, w = width),
                     if is_selected {
-                        Style::default().bg(Color::Blue)
+                        Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                     } else {
                         Style::default()
                     },
@@ -196,7 +196,7 @@ mod test {
                 )),
                 Spans::from(Span::styled(
                     " Scroll up/down/left/right [k,j,h,l]  3",
-                    Style::default().bg(Color::Blue)
+                    Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                 )),
                 Spans::from(Span::styled(" Filter [/]  3", Style::default()))
             ]
