@@ -7,6 +7,7 @@ pub struct PatternPosition {
 
 pub fn find_last_separator(input: &String) -> Option<PatternPosition> {
     let pattern_res = regex::Regex::new(r#"[\s+.\-/*\(\)=]"#);
+    // let pattern_res = regex::Regex::new(r#"\W*\w*$"#);
     if let Err(e) = &pattern_res {
         error!("Could not compile pattern {}", e);
     } else if let Ok(pattern) = &pattern_res {

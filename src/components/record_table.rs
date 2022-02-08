@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event::KeyCode;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -15,7 +16,7 @@ use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::databases::DatabaseEvent;
 use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
-use crate::components::EventState::Consumed;
+use crate::components::EventState::{Consumed, NotConsumed};
 use crate::components::{Drawable, TableComponent, TableFilterComponent};
 use crate::config::KeyConfig;
 use crate::{handle_message, Key};
@@ -147,8 +148,19 @@ impl Component for RecordTableComponent {
                         // run filter
                         self.reload_results_table().await?;
                         self.focus = Focus::Table;
+                        Ok(Consumed)
+                    } else {
+                        Ok(NotConsumed)
                     }
-                    Ok(Consumed)
+                    /*
+                     else if key == Key::Ctrl(KeyCode::Char('c')) || key == Key::Ctrl(KeyCode::Char('C')){
+                        Ok(NotConsumed)
+                    } else {
+                        // swallow other
+                        Ok(Consumed)
+                    }
+
+                    */
                 }
             }
         };

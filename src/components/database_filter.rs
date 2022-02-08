@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -110,7 +111,7 @@ impl Component for DatabaseFilterComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Ctrl('a') => {
+            Key::Ctrl(event::KeyCode::Char('a')) => {
                 if !self.input.is_empty() && self.input_idx > 0 {
                     self.input_idx = 0;
                     self.input_cursor_position = 0
@@ -125,7 +126,7 @@ impl Component for DatabaseFilterComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Ctrl('e') => {
+            Key::Ctrl(event::KeyCode::Char('e')) => {
                 if self.input_idx < self.input.len() {
                     self.input_idx = self.input.len();
                     self.input_cursor_position = self.input_str().width() as u16;

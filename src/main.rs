@@ -5,7 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use log::error;
+use log::{debug, error};
 use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::app::App;
@@ -47,9 +47,19 @@ async fn main() -> anyhow::Result<()> {
         match events.next()? {
             Event::Input(key) => match app.event(key).await {
                 Ok(state) => {
+                    debug!(
+                        "Key pressed {:?} state consumed {}. Quit key {:?} exit key {:?}",
+                        key,
+                        state.is_consumed(),
+                        app.config.key_config.quit,
+                        app.config.key_config.exit
+                    );
                     if !state.is_consumed()
-                        && (key == app.config.key_config.quit || key == app.config.key_config.exit)
+                        && (key == app.config.key_config.quit
+                            || key == Key::Ctrl(crossterm::event::KeyCode::Char('c'))
+                            || key == Key::Ctrl(crossterm::event::KeyCode::Char('C')))
                     {
+                        debug!("Exiting main event loop!");
                         break;
                     }
                 }

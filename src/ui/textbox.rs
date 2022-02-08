@@ -1,5 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event;
+use crossterm::event::KeyCode;
 use itertools::Itertools;
 use log::{debug, error};
 use tui::backend::Backend;
@@ -208,11 +210,16 @@ impl Component for TextBox {
                 Ok(Consumed)
             }
 
-            Key::Ctrl('\u{08}') => {
+            Key::Ctrl(KeyCode::Backspace) => {
                 let input_str: String = self.input.clone().into_iter().collect();
                 if let Some(pos) = sql_utils::find_last_separator(&input_str) {
-                    self.input = self.input[0..pos.index].into();
-                    self.input_cursor_position = pos.index;
+                    if pos.index + pos.length == self.input_cursor_position {
+                        self.input = self.input[0..pos.index].into();
+                        self.input_cursor_position = pos.index;
+                    } else {
+                        self.input = self.input[0..pos.index + pos.length].into();
+                        self.input_cursor_position = pos.index + pos.length;
+                    }
                 } else {
                     self.input.clear();
                     self.input_cursor_position = 0;
@@ -239,11 +246,11 @@ impl Component for TextBox {
                 }
                 Ok(EventState::Consumed)
             }
-            Key::Ctrl('a') | Key::Home => {
+            Key::Ctrl(event::KeyCode::Char('a')) | Key::Home => {
                 self.input_cursor_position = 0;
                 Ok(EventState::Consumed)
             }
-            Key::Ctrl('e') | Key::End => {
+            Key::Ctrl(event::KeyCode::Char('e')) | Key::End => {
                 self.input_cursor_position = self.input.len();
                 Ok(EventState::Consumed)
             }

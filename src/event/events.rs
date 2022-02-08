@@ -13,7 +13,7 @@ pub struct EventConfig {
 impl Default for EventConfig {
     fn default() -> EventConfig {
         EventConfig {
-            exit_key: Key::Ctrl('c'),
+            exit_key: Key::Ctrl(event::KeyCode::Char('c')),
             tick_rate: Duration::from_millis(250),
         }
     }
