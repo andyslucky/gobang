@@ -4,11 +4,11 @@ use easy_cast::CastFloat;
 use tui::{
     backend::Backend,
     buffer::Buffer,
-    Frame,
     layout::{Margin, Rect},
     style::{Color, Style},
     symbols::{block::FULL, line::DOUBLE_VERTICAL},
     widgets::Widget,
+    Frame,
 };
 
 struct Scrollbar {

@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use tui::{backend::Backend, Frame, layout::Rect};
+use tui::{backend::Backend, layout::Rect, Frame};
 
 use crate::ui::scrollbar::draw_scrollbar;
 

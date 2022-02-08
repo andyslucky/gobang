@@ -3,11 +3,11 @@ use std::iter::Iterator;
 use tui::{
     backend::Backend,
     buffer::Buffer,
-    Frame,
     layout::Rect,
     style::Style,
     text::Spans,
     widgets::{Block, List, ListItem, Widget},
+    Frame,
 };
 
 struct ScrollableList<'b, L>

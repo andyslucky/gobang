@@ -2,10 +2,10 @@ use std::io;
 
 use anyhow::Result;
 use crossterm::{
-    ExecutableCommand,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
-use log::{error};
+use log::{debug, error};
 use tui::{backend::CrosstermBackend, Terminal};
 
 use crate::app::App;
@@ -18,9 +18,9 @@ mod components;
 mod config;
 mod database;
 mod event;
+mod sql_utils;
 mod ui;
 mod version;
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
     let events = event::Events::new(250);
-    let mut app = App::new(config.clone());
+    let mut app = App::new(config.clone()).await;
 
     terminal.clear()?;
 
@@ -47,16 +47,26 @@ async fn main() -> anyhow::Result<()> {
         match events.next()? {
             Event::Input(key) => match app.event(key).await {
                 Ok(state) => {
+                    debug!(
+                        "Key pressed {:?} state consumed {}. Quit key {:?} exit key {:?}",
+                        key,
+                        state.is_consumed(),
+                        app.config.key_config.quit,
+                        app.config.key_config.exit
+                    );
                     if !state.is_consumed()
-                        && (key == app.config.key_config.quit || key == app.config.key_config.exit)
+                        && (key == app.config.key_config.quit
+                            || key == Key::Ctrl(crossterm::event::KeyCode::Char('c'))
+                            || key == Key::Ctrl(crossterm::event::KeyCode::Char('C')))
                     {
+                        debug!("Exiting main event loop!");
                         break;
                     }
                 }
                 Err(err) => {
                     error!("error: {}", err);
                     app.error.set(err.to_string())?;
-                },
+                }
             },
             Event::Tick => (),
         }

@@ -6,16 +6,16 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Span, Spans},
     widgets::{Block, Borders},
+    Frame,
 };
 
 use database_tree::{Database, DatabaseTree, DatabaseTreeItem, Table};
 
-use crate::app::{AppMessage, SharedPool};
+use crate::app::{AppMessage, AppStateRef};
 use crate::components::command::{self, CommandInfo};
 use crate::components::connections::ConnectionEvent;
 use crate::config::{Connection, KeyConfig};
@@ -24,8 +24,8 @@ use crate::ui::common_nav;
 use crate::ui::scrolllist::draw_list_block;
 
 use super::{
-    Component, DatabaseFilterComponent, DrawableComponent, EventState,
-    utils::scroll_vertical::VerticalScroll,
+    utils::scroll_vertical::VerticalScroll, Component, DatabaseFilterComponent, DrawableComponent,
+    EventState,
 };
 
 // ▸
@@ -40,7 +40,7 @@ pub enum Focus {
 }
 
 pub enum DatabaseEvent {
-    TableSelected(Database, Table)
+    TableSelected(Database, Table),
 }
 
 impl AppMessage for DatabaseEvent {
@@ -52,29 +52,29 @@ impl AppMessage for DatabaseEvent {
 pub struct DatabasesComponent {
     tree: DatabaseTree,
     filter: DatabaseFilterComponent,
-    filterd_tree: Option<DatabaseTree>,
+    filtered_tree: Option<DatabaseTree>,
     scroll: VerticalScroll,
     focus: Focus,
     key_config: KeyConfig,
-    shared_pool : SharedPool
+    app_state: AppStateRef,
 }
 
 impl DatabasesComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, app_state: AppStateRef) -> Self {
         Self {
             tree: DatabaseTree::default(),
             filter: DatabaseFilterComponent::new(),
-            filterd_tree: None,
+            filtered_tree: None,
             scroll: VerticalScroll::new(false, false),
             focus: Focus::Tree,
             key_config,
-            shared_pool
+            app_state,
         }
     }
 
     async fn update(&mut self, conn_opt: &Option<Connection>) -> Result<()> {
         let mut databases: Vec<Database> = vec![];
-        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+        if let Some(pool) = self.app_state.read().await.shared_pool.as_ref() {
             if let Some(connection) = conn_opt {
                 databases = match &connection.database {
                     Some(database) => vec![Database::new(
@@ -86,7 +86,7 @@ impl DatabasesComponent {
             }
         }
         self.tree = DatabaseTree::new(databases.as_slice(), &BTreeSet::new())?;
-        self.filterd_tree = None;
+        self.filtered_tree = None;
         self.filter.reset();
         Ok(())
     }
@@ -96,7 +96,7 @@ impl DatabasesComponent {
     }
 
     pub fn tree(&self) -> &DatabaseTree {
-        self.filterd_tree.as_ref().unwrap_or(&self.tree)
+        self.filtered_tree.as_ref().unwrap_or(&self.tree)
     }
 
     fn tree_item_to_span(
@@ -133,7 +133,7 @@ impl DatabasesComponent {
                     Span::styled(
                         format!("{}{}{}", indent_str, arrow, first),
                         if selected {
-                            Style::default().bg(Color::Blue)
+                            Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                         } else {
                             Style::default()
                         },
@@ -141,7 +141,9 @@ impl DatabasesComponent {
                     Span::styled(
                         middle.to_string(),
                         if selected {
-                            Style::default().bg(Color::Blue).fg(Color::Blue)
+                            Style::default()
+                                .bg(Color::Rgb(0xea, 0x59, 0x0b))
+                                .fg(Color::Blue)
                         } else {
                             Style::default().fg(Color::Blue)
                         },
@@ -149,7 +151,7 @@ impl DatabasesComponent {
                     Span::styled(
                         format!("{:w$}", last.to_string(), w = width as usize),
                         if selected {
-                            Style::default().bg(Color::Blue)
+                            Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                         } else {
                             Style::default()
                         },
@@ -161,7 +163,7 @@ impl DatabasesComponent {
         Spans::from(Span::styled(
             format!("{}{}{:w$}", indent_str, arrow, name, w = width as usize),
             if selected {
-                Style::default().bg(Color::Blue)
+                Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
             } else {
                 Style::default()
             },
@@ -192,7 +194,7 @@ impl DatabasesComponent {
             .draw(f, chunks[0], matches!(self.focus, Focus::Filter))?;
 
         let tree_height = chunks[1].height as usize;
-        let tree = if let Some(tree) = self.filterd_tree.as_ref() {
+        let tree = if let Some(tree) = self.filtered_tree.as_ref() {
             tree
         } else {
             &self.tree
@@ -247,14 +249,18 @@ impl Component for DatabasesComponent {
         out.push(CommandInfo::new(command::expand_collapse(&self.key_config)))
     }
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if key == self.key_config.filter && self.focus == Focus::Tree {
             self.focus = Focus::Filter;
             return Ok(EventState::Consumed);
         }
 
         if matches!(self.focus, Focus::Filter) {
-            self.filterd_tree = if self.filter.input_str().is_empty() {
+            self.filtered_tree = if self.filter.input_str().is_empty() {
                 None
             } else {
                 Some(self.tree.filter(self.filter.input_str()))
@@ -273,7 +279,7 @@ impl Component for DatabasesComponent {
             }
             key => {
                 if tree_nav(
-                    if let Some(tree) = self.filterd_tree.as_mut() {
+                    if let Some(tree) = self.filtered_tree.as_mut() {
                         tree
                     } else {
                         &mut self.tree
@@ -286,7 +292,7 @@ impl Component for DatabasesComponent {
             }
         }
 
-        if  key == self.key_config.enter && matches!(self.focus, Focus::Tree) {
+        if key == self.key_config.enter && matches!(self.focus, Focus::Tree) {
             if let Some((database, table)) = self.tree().selected_table() {
                 message_queue.push(Box::new(DatabaseEvent::TableSelected(database, table)));
                 return Ok(EventState::Consumed);
@@ -323,7 +329,7 @@ fn tree_nav(tree: &mut DatabaseTree, key: Key, key_config: &KeyConfig) -> bool {
 mod test {
     use database_tree::Table;
 
-    use super::{Color, Database, DatabasesComponent, DatabaseTreeItem, Span, Spans, Style};
+    use super::{Color, Database, DatabaseTreeItem, DatabasesComponent, Span, Spans, Style};
 
     #[test]
     fn test_tree_database_tree_item_to_span() {
@@ -363,7 +369,7 @@ mod test {
             ),
             Spans::from(vec![Span::styled(
                 format!("\u{25b8}{:w$}", "foo", w = WIDTH as usize),
-                Style::default().bg(Color::Blue)
+                Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
             )])
         );
     }
@@ -418,7 +424,7 @@ mod test {
             ),
             Spans::from(Span::styled(
                 format!("  {:w$}", "bar", w = WIDTH as usize),
-                Style::default().bg(Color::Blue),
+                Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b)),
             ))
         );
     }
@@ -472,11 +478,19 @@ mod test {
                 Some("rb".to_string()),
             ),
             Spans::from(vec![
-                Span::styled(format!("  {}", "ba"), Style::default().bg(Color::Blue)),
-                Span::styled("rb", Style::default().bg(Color::Blue).fg(Color::Blue)),
+                Span::styled(
+                    format!("  {}", "ba"),
+                    Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
+                ),
+                Span::styled(
+                    "rb",
+                    Style::default()
+                        .bg(Color::Rgb(0xea, 0x59, 0x0b))
+                        .fg(Color::Blue)
+                ),
                 Span::styled(
                     format!("{:w$}", "az", w = WIDTH as usize),
-                    Style::default().bg(Color::Blue)
+                    Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                 )
             ])
         );

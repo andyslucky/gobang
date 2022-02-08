@@ -1,22 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event;
 use tui::{
     backend::Backend,
-    Frame,
     layout::Rect,
     style::{Color, Style},
     text::Spans,
     widgets::{Block, Borders, Paragraph},
+    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use database_tree::Table;
 
-
 use crate::components::command::CommandInfo;
 use crate::event::Key;
 
-use super::{Component, compute_character_width, DrawableComponent, EventState};
+use super::{compute_character_width, Component, DrawableComponent, EventState};
 
 pub struct DatabaseFilterComponent {
     pub table: Option<Table>,
@@ -79,7 +79,11 @@ impl DrawableComponent for DatabaseFilterComponent {
 impl Component for DatabaseFilterComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         let input_str: String = self.input.iter().collect();
 
         match key {
@@ -107,7 +111,7 @@ impl Component for DatabaseFilterComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Ctrl('a') => {
+            Key::Ctrl(event::KeyCode::Char('a')) => {
                 if !self.input.is_empty() && self.input_idx > 0 {
                     self.input_idx = 0;
                     self.input_cursor_position = 0
@@ -122,7 +126,7 @@ impl Component for DatabaseFilterComponent {
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Ctrl('e') => {
+            Key::Ctrl(event::KeyCode::Char('e')) => {
                 if self.input_idx < self.input.len() {
                     self.input_idx = self.input.len();
                     self.input_cursor_position = self.input_str().width() as u16;

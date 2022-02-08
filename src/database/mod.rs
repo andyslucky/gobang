@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use sqlx::{Row};
 use sqlx::mysql::MySqlRow;
 use sqlx::postgres::PgRow;
 use sqlx::sqlite::SqliteRow;
+use sqlx::Row;
 use sqlx::TypeInfo as _;
 
 use database_tree::{Child, Database, Table};
@@ -20,6 +20,7 @@ pub const RECORDS_LIMIT_PER_PAGE: u8 = 200;
 pub trait Pool: Send + Sync {
     async fn execute(&self, query: &String) -> anyhow::Result<ExecuteResult>;
     async fn get_databases(&self) -> anyhow::Result<Vec<Database>>;
+    // TODO: Change argument to &String
     async fn get_tables(&self, database: String) -> anyhow::Result<Vec<Child>>;
     async fn get_records(
         &self,
@@ -28,11 +29,7 @@ pub trait Pool: Send + Sync {
         page: u16,
         filter: Option<String>,
     ) -> anyhow::Result<(Vec<String>, Vec<Vec<String>>)>;
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>>;
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>>;
     async fn get_constraints(
         &self,
         database: &Database,
@@ -49,6 +46,16 @@ pub trait Pool: Send + Sync {
         table: &Table,
     ) -> anyhow::Result<Vec<Box<dyn TableRow>>>;
     async fn close(&self);
+
+    async fn get_keywords(&self) -> anyhow::Result<Vec<String>> {
+        Ok(vec![
+            "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE", "FROM",
+            "LIMIT", "WHERE", "LIKE",
+        ]
+        .into_iter()
+        .map(|s| String::from(s))
+        .collect())
+    }
 }
 
 pub enum ExecuteResult {
@@ -68,11 +75,11 @@ pub trait TableRow: std::marker::Send {
 }
 
 pub struct Column {
-    name: Option<String>,
-    r#type: Option<String>,
-    null: Option<String>,
-    default: Option<String>,
-    comment: Option<String>,
+    pub name: Option<String>,
+    pub r#type: Option<String>,
+    pub null: Option<String>,
+    pub default: Option<String>,
+    pub comment: Option<String>,
 }
 
 impl TableRow for Column {
@@ -180,10 +187,7 @@ pub struct Constraint {
 
 impl TableRow for Constraint {
     fn fields(&self) -> Vec<String> {
-        let mut fields = vec![
-            "name".to_string(),
-            "column_name".to_string(),
-        ];
+        let mut fields = vec!["name".to_string(), "column_name".to_string()];
         if self.origin.is_some() {
             fields.push("origin".to_string());
         }
@@ -191,10 +195,7 @@ impl TableRow for Constraint {
     }
 
     fn columns(&self) -> Vec<String> {
-        let mut columns = vec![
-            self.name.to_string(),
-            self.column_name.to_string(),
-        ];
+        let mut columns = vec![self.name.to_string(), self.column_name.to_string()];
         if let Some(origin) = &self.origin {
             columns.push(origin.clone())
         }
@@ -213,26 +214,32 @@ macro_rules! pool_exec_impl {
         let mut records = vec![];
 
         while let Some(r) = result_sets.try_next().await? {
-            debug!("Query result is {}", if r.is_left() {"write operation"} else {"row"});
-            if r.is_left() && records.is_empty(){
+            debug!(
+                "Query result is {}",
+                if r.is_left() {
+                    "write operation"
+                } else {
+                    "row"
+                }
+            );
+            if r.is_left() && records.is_empty() {
                 debug!("Returning ExecuteResult::Write");
                 return Ok(ExecuteResult::Write {
-                    updated_rows: r.left().unwrap().rows_affected()
+                    updated_rows: r.left().unwrap().rows_affected(),
                 });
             } else if let Some(row) = r.right() {
                 if headers.is_empty() {
                     headers = row
-                    .columns()
-                    .iter()
-                    .map(|column| column.name().to_string())
-                    .collect();
+                        .columns()
+                        .iter()
+                        .map(|column| column.name().to_string())
+                        .collect();
                 }
                 let mut new_row = vec![];
                 for column in row.columns() {
                     new_row.push(convert_column_val_to_str(&row, column)?)
                 }
                 records.push(new_row)
-
             }
         }
         debug!("Returning ExecuteResult::Read");
@@ -249,12 +256,11 @@ macro_rules! pool_exec_impl {
                 update_time: None,
                 engine: None,
                 schema: None,
+                database: None,
             },
         });
-    }
+    };
 }
-
-
 
 #[macro_export]
 macro_rules! get_or_null {
@@ -276,23 +282,41 @@ macro_rules! convert_column {
 
 macro_rules! convert_column_to_common_types {
     ($row : expr, $column_name : expr) => {
-    convert_column!($row,$column_name,String,&str,i16,i32,i64,f32,f64,chrono::DateTime<chrono::Utc>,
-        chrono::NaiveDateTime,chrono::DateTime<chrono::Local>,chrono::NaiveDate,chrono::NaiveTime,
-        serde_json::Value,bool);
+        convert_column!(
+            $row,
+            $column_name,
+            String,
+            &str,
+            i16,
+            i32,
+            i64,
+            f32,
+            f64,
+            chrono::DateTime<chrono::Utc>,
+            chrono::NaiveDateTime,
+            chrono::DateTime<chrono::Local>,
+            chrono::NaiveDate,
+            chrono::NaiveTime,
+            serde_json::Value,
+            bool
+        );
     };
 }
 
-pub fn convert_column_val_to_str<R : sqlx::Row + std::any::Any, C : sqlx::Column>(row : &R, column : &C) -> anyhow::Result<String> {
-    let row : &dyn std::any::Any = row;
+pub fn convert_column_val_to_str<R: sqlx::Row + std::any::Any, C: sqlx::Column>(
+    row: &R,
+    column: &C,
+) -> anyhow::Result<String> {
+    let row: &dyn std::any::Any = row;
     let column_name = column.name();
     if let Some(row) = row.downcast_ref::<MySqlRow>() {
-        convert_column_to_common_types!(row,column_name);
-        convert_column!(row,column_name, rust_decimal::Decimal);
+        convert_column_to_common_types!(row, column_name);
+        convert_column!(row, column_name, rust_decimal::Decimal);
     } else if let Some(row) = row.downcast_ref::<SqliteRow>() {
         convert_column_to_common_types!(row, column_name);
     } else if let Some(row) = row.downcast_ref::<PgRow>() {
         convert_column_to_common_types!(row, column_name);
-        convert_column!(row,column_name, rust_decimal::Decimal);
+        convert_column!(row, column_name, rust_decimal::Decimal);
         if let Ok(value) = row.try_get(column_name) {
             let value: Option<&[u8]> = value;
             return Ok(value.map_or("NULL".to_string(), |values| {
@@ -311,9 +335,8 @@ pub fn convert_column_val_to_str<R : sqlx::Row + std::any::Any, C : sqlx::Column
         }
     }
     anyhow::bail!(
-            "column type not implemented: `{}` {}",
-            column_name,
-            column.type_info().clone().name()
+        "column type not implemented: `{}` {}",
+        column_name,
+        column.type_info().clone().name()
     )
-   
 }

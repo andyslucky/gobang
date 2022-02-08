@@ -3,15 +3,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use futures::TryStreamExt;
+use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{Column as _, Row as _};
-use sqlx::mysql::{MySqlPoolOptions};
 
 use database_tree::{Child, Database, Table};
 
-use crate::{pool_exec_impl};
-use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
+use crate::database::{convert_column_val_to_str, Column, Constraint, ForeignKey, Index};
+use crate::pool_exec_impl;
 
-use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
+use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
 
 pub struct MySqlPool {
     pool: sqlx::mysql::MySqlPool,
@@ -62,6 +62,7 @@ impl Pool for MySqlPool {
                 update_time: row.try_get("Update_time")?,
                 engine: row.try_get("Engine")?,
                 schema: None,
+                database: Some(database.clone()),
             })
         }
         Ok(tables.into_iter().map(|table| table.into()).collect())
@@ -110,25 +111,25 @@ impl Pool for MySqlPool {
         Ok((headers, records))
     }
 
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>> {
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>> {
+        let database_name = table.clone().database.ok_or(anyhow::Error::msg(format!(
+            "No database found containing table {}",
+            table.name
+        )))?;
         let query = format!(
             "SHOW FULL COLUMNS FROM `{}`.`{}`",
-            database.name, table.name
+            database_name, table.name
         );
         let mut rows = sqlx::query(query.as_str()).fetch(&self.pool);
-        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut columns: Vec<Column> = vec![];
         while let Some(row) = rows.try_next().await? {
-            columns.push(Box::new(Column {
+            columns.push(Column {
                 name: row.try_get("Field")?,
                 r#type: row.try_get("Type")?,
                 null: row.try_get("Null")?,
                 default: row.try_get("Default")?,
                 comment: row.try_get("Comment")?,
-            }))
+            })
         }
         Ok(columns)
     }
@@ -160,7 +161,7 @@ impl Pool for MySqlPool {
             constraints.push(Box::new(Constraint {
                 name: row.try_get("CONSTRAINT_NAME")?,
                 column_name: row.try_get("COLUMN_NAME")?,
-                origin: None
+                origin: None,
             }))
         }
         Ok(constraints)

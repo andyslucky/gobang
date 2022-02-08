@@ -1,20 +1,23 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use crossterm::event::KeyCode;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
+    Frame,
 };
 
-use database_tree::{Database, Table as DTable};
+use database_tree::{Child, Database, Table as DTable};
 
-use crate::app::{AppMessage, GlobalMessageQueue, SharedPool};
+use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
 use crate::clipboard::copy_to_clipboard;
-use crate::components::{Drawable, TableComponent, TableFilterComponent};
 use crate::components::command::CommandInfo;
+use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::databases::DatabaseEvent;
 use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
+use crate::components::EventState::{Consumed, NotConsumed};
+use crate::components::{Drawable, TableComponent, TableFilterComponent};
 use crate::config::KeyConfig;
 use crate::{handle_message, Key};
 
@@ -30,7 +33,9 @@ pub struct RecordTableComponent {
     pub table: TableComponent,
     pub focus: Focus,
     key_config: KeyConfig,
-    shared_pool : SharedPool
+    database: Option<Database>,
+    dtable: Option<DTable>,
+    app_state: AppStateRef,
 }
 
 impl<B: Backend> Drawable<B> for RecordTableComponent {
@@ -49,7 +54,7 @@ impl<B: Backend> Drawable<B> for RecordTableComponent {
     }
 }
 
-impl<B : Backend> Tab<B> for RecordTableComponent {
+impl<B: Backend> Tab<B> for RecordTableComponent {
     fn tab_type(&self) -> TabType {
         TabType::Records
     }
@@ -57,39 +62,55 @@ impl<B : Backend> Tab<B> for RecordTableComponent {
     fn tab_name(&self) -> String {
         String::from("Records")
     }
-
-
 }
 
 impl RecordTableComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool) -> Self {
+    pub fn new(key_config: KeyConfig, app_state: AppStateRef) -> Self {
         Self {
             filter: TableFilterComponent::new(key_config.clone()),
             table: TableComponent::new(key_config.clone()),
             focus: Focus::Table,
             key_config,
-            shared_pool
+            app_state,
+            database: None,
+            dtable: None,
         }
     }
 
-    async fn update_table(
-        &mut self,
-        database: Database,
-        table: DTable,
-    ) -> Result<()> {
+    async fn update_table(&mut self, database: Database, table: DTable) -> Result<()> {
+        self.database = Some(database);
+        self.dtable = Some(table);
+        self.reload_results_table().await
+    }
 
-        let mut headers : Vec<String> = vec![];
-        let mut rows : Vec<Vec<String>> = vec![];
-        if let Some(pool) = self.shared_pool.read().await.as_ref() {
-            let filter = self.filter.input_str();
-            let res = pool
-                .get_records(&database, &table, 0, if filter.is_empty() {None} else {Some(filter)})
-                .await?;
-            headers = res.0;
-            rows = res.1;
+    async fn reload_results_table(&mut self) -> Result<()> {
+        if let Some(database) = &self.database {
+            if let Some(table) = &self.dtable {
+                let mut headers: Vec<String> = vec![];
+                let mut rows: Vec<Vec<String>> = vec![];
+                if let Some(pool) = self.app_state.read().await.shared_pool.as_ref() {
+                    let filter = self.filter.input_str();
+                    let res = pool
+                        .get_records(
+                            database,
+                            table,
+                            0,
+                            if filter.is_empty() {
+                                None
+                            } else {
+                                Some(filter)
+                            },
+                        )
+                        .await?;
+                    headers = res.0;
+                    rows = res.1;
+                }
+                self.table
+                    .update(rows, headers, database.clone(), table.clone());
+                self.filter.set_table(table.clone());
+            }
         }
-        self.table.update(rows, headers, database, table.clone());
-        self.filter.table = Some(table);
+
         Ok(())
     }
 
@@ -105,23 +126,42 @@ impl Component for RecordTableComponent {
         self.table.commands(out)
     }
 
-    async fn event(&mut self, key: Key, message_queue: &mut GlobalMessageQueue) -> Result<EventState> {
-        if key == self.key_config.copy {
-            if let Some(text) = self.table.selected_cells() {
-                copy_to_clipboard(text.as_str())?
-            }
-        }
-        if key == self.key_config.filter {
-            self.focus = Focus::Filter;
-            return Ok(EventState::Consumed);
-        }
-
+    async fn event(
+        &mut self,
+        key: Key,
+        message_queue: &mut GlobalMessageQueue,
+    ) -> Result<EventState> {
         return match self.focus {
             Focus::Table => {
-                self.table.event(key, message_queue).await
+                if key == self.key_config.filter {
+                    self.focus = Focus::Filter;
+                    Ok(EventState::Consumed)
+                } else {
+                    self.table.event(key, message_queue).await
+                }
             }
             Focus::Filter => {
-                self.filter.event(key, message_queue).await
+                if self.filter.event(key, message_queue).await?.is_consumed() {
+                    Ok(Consumed)
+                } else {
+                    if key == Key::Enter {
+                        // run filter
+                        self.reload_results_table().await?;
+                        self.focus = Focus::Table;
+                        Ok(Consumed)
+                    } else {
+                        Ok(NotConsumed)
+                    }
+                    /*
+                     else if key == Key::Ctrl(KeyCode::Char('c')) || key == Key::Ctrl(KeyCode::Char('C')){
+                        Ok(NotConsumed)
+                    } else {
+                        // swallow other
+                        Ok(Consumed)
+                    }
+
+                    */
+                }
             }
         };
     }
@@ -132,10 +172,13 @@ impl Component for RecordTableComponent {
                 TableSelected(database,table) => {
                     self.reset();
                     self.update_table(database.clone(), table.clone()).await?;
+                    let app_rhandle = self.app_state.read().await;
+                    if let Some(src) = (*app_rhandle).pool_completion_src().await {
+                        self.filter.update_completion_src(Box::new(src));
+                    }
                 }
             );
         }
-        // TODO : Add filter message handling
         Ok(())
     }
 }

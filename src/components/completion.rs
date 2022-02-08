@@ -1,27 +1,153 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use database_tree::{Child, Database, Table};
+use futures::{join, try_join};
+use log::{debug, error};
+use std::pin::Pin;
 use tui::{
     backend::Backend,
-    Frame,
     layout::Rect,
     style::{Color, Style},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
+    Frame,
 };
+
+use crate::app::AppMessage;
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
+use crate::database::{Column, Pool};
 
 use super::{Component, EventState, MovableComponent};
 
-const RESERVED_WORDS_IN_WHERE_CLAUSE: &[&str] = &["IN", "AND", "OR", "NOT", "NULL", "IS"];
-const ALL_RESERVED_WORDS: &[&str] = &[
-    "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "UPDATE", "DELETE", "FROM", "LIMIT", "WHERE",
-];
+#[async_trait]
+/// A FilterableCompletionSource abstracts the completion logic for a completion component.
+/// This allows each sql pool vendor/parent component to customize completion options to fit the context
+/// of the user's current action. Many vendors have their own unique set of keywords, this allows
+pub trait FilterableCompletionSource: Send + Sync {
+    /// Gets completion items for the last word part. Does not use current context to optimize suggestions
+    /// and suggestion order. This will be coming in a future update
+    async fn suggested_completion_items(
+        &self,
+        last_word_part: &String,
+    ) -> anyhow::Result<Vec<String>>;
+}
+
+pub struct PoolFilterableCompletionSource {
+    pub tables: Vec<Table>,
+    pub columns: Vec<String>,
+    pub databases: Vec<Database>,
+    pub key_words: Vec<String>,
+}
+
+impl PoolFilterableCompletionSource {
+    pub async fn new(
+        pool: &Box<dyn Pool>,
+        database: &Option<String>,
+        table: &Option<Table>,
+    ) -> anyhow::Result<Self> {
+        let (columns, tables, databases, key_words): (
+            Vec<Column>,
+            Vec<Child>,
+            Vec<Database>,
+            Vec<String>,
+        ) = try_join!(
+            async {
+                if let Some(t) = table {
+                    pool.get_columns(t).await
+                } else {
+                    Ok(vec![])
+                }
+            },
+            async {
+                if let Some(db) = database {
+                    pool.get_tables(db.clone()).await
+                } else {
+                    Ok(vec![])
+                }
+            },
+            pool.get_databases(),
+            pool.get_keywords()
+        )?;
+        let tables = tables
+            .into_iter()
+            .map_while(|c| {
+                if let Child::Table(t) = c {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let columns = columns.into_iter().map_while(|c| c.name).collect();
+        return Ok(Self {
+            tables,
+            columns,
+            databases,
+            key_words,
+        });
+    }
+}
+
+#[async_trait]
+impl FilterableCompletionSource for PoolFilterableCompletionSource {
+    async fn suggested_completion_items(&self, last_word_part: &String) -> Result<Vec<String>> {
+        let pattern = regex::Regex::new(format!("(?i)^{}", last_word_part).as_str())?;
+        Ok(self
+            .tables
+            .iter()
+            .map(|t| t.name.clone())
+            .chain(self.columns.clone().into_iter())
+            .chain(self.databases.iter().map(|d| d.name.clone()))
+            .chain(self.key_words.clone().into_iter())
+            .filter(|name| pattern.is_match(name))
+            .collect())
+    }
+}
+
+struct DefaultFilterableCompletionSource {
+    sql_key_words: Vec<String>,
+}
+
+impl DefaultFilterableCompletionSource {
+    fn new() -> Self {
+        Self {
+            sql_key_words: vec![
+                "IN", "AND", "OR", "NOT", "NULL", "IS", "SELECT", "INSERT", "UPDATE", "DELETE",
+                "FROM", "LIMIT", "WHERE", "LIKE",
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect(),
+        }
+    }
+}
+
+#[async_trait]
+impl FilterableCompletionSource for DefaultFilterableCompletionSource {
+    async fn suggested_completion_items(&self, last_word_part: &String) -> Result<Vec<String>> {
+        let pattern_res = regex::Regex::new(format!("(?i)^{}", last_word_part).as_str());
+        if let Err(e) = &pattern_res {
+            error!("Error compiling pattern {}", e);
+            return Err(e.clone().into());
+        }
+        let patt = pattern_res.unwrap();
+        let candidates = self
+            .sql_key_words
+            .iter()
+            .filter(|kw| patt.is_match(kw.as_str()))
+            .map(|kw| kw.clone())
+            .collect();
+        debug!("Filtered candidates {:?}", candidates);
+        return Ok(candidates);
+    }
+}
 
 pub struct CompletionComponent {
     key_config: KeyConfig,
     state: ListState,
     word: String,
     candidates: Vec<String>,
+    pub completion_source: Box<dyn FilterableCompletionSource>, // shared_pool : SharedPool
 }
 
 impl CompletionComponent {
@@ -30,64 +156,52 @@ impl CompletionComponent {
             key_config,
             state: ListState::default(),
             word: word.into(),
-            candidates: if all {
-                ALL_RESERVED_WORDS.iter().map(|w| w.to_string()).collect()
-            } else {
-                RESERVED_WORDS_IN_WHERE_CLAUSE
-                    .iter()
-                    .map(|w| w.to_string())
-                    .collect()
-            },
+            candidates: vec![],
+            completion_source: Box::new(DefaultFilterableCompletionSource::new()),
         }
     }
 
-    pub fn update(&mut self, word: impl Into<String>) {
-        self.word = word.into();
+    pub async fn update<S: Into<String>>(&mut self, word_part: S) {
+        self.word = word_part.into();
         self.state.select(None);
-        self.state.select(Some(0))
+        let candidates_res = self
+            .completion_source
+            .suggested_completion_items(&self.word)
+            .await;
+        if let Err(e) = &candidates_res {
+            error!("Error fetching completion candidates {}", e);
+        } else if let Ok(candidates) = &candidates_res {
+            debug!("Filtered candidates {:?}", candidates);
+            self.candidates = candidates.clone();
+            if !self.candidates.is_empty() {
+                self.state.select(Some(0));
+            }
+        }
+    }
+
+    fn change_selection(&mut self, offset: i32) {
+        if let Some(i) = self.state.selected() {
+            let new_selected_index = (i as i32 + offset) as usize;
+            if new_selected_index >= 0 && new_selected_index < self.candidates.len() {
+                self.state.select(Some(new_selected_index));
+            }
+        }
     }
 
     fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.filterd_candidates().count() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
+        self.change_selection(1);
     }
 
     fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.filterd_candidates().count() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn filterd_candidates(&self) -> impl Iterator<Item = &String> {
-        self.candidates.iter().filter(move |c| {
-            (c.starts_with(self.word.to_lowercase().as_str())
-                || c.starts_with(self.word.to_uppercase().as_str()))
-                && !self.word.is_empty()
-        })
+        self.change_selection(-1);
     }
 
     pub fn selected_candidate(&self) -> Option<String> {
-        self.filterd_candidates()
-            .collect::<Vec<&String>>()
-            .get(self.state.selected()?)
-            .map(|c| c.to_string())
+        if let Some(index) = self.state.selected() {
+            Some(self.candidates[index].clone())
+        } else {
+            None
+        }
     }
 
     pub fn word(&self) -> String {
@@ -107,25 +221,26 @@ impl MovableComponent for CompletionComponent {
         if !self.word.is_empty() {
             let width = 30;
             let candidates = self
-                .filterd_candidates()
+                .candidates
+                .iter()
                 .map(|c| ListItem::new(c.to_string()))
                 .collect::<Vec<ListItem>>();
-            if candidates.clone().is_empty() {
+            let cand_len = candidates.len();
+            if candidates.is_empty() {
                 return Ok(());
             }
-            let candidate_list = List::new(candidates.clone())
+            let candidate_list = List::new(candidates)
                 .block(Block::default().borders(Borders::ALL))
-                .highlight_style(Style::default().bg(Color::Blue))
+                .highlight_style(Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b)))
                 .style(Style::default());
 
             let area = Rect::new(
-                area.x + x,
-                area.y + y + 2,
+                x,
+                y,
                 width
                     .min(f.size().width)
                     .min(f.size().right().saturating_sub(area.x + x)),
-                (candidates.len().min(5) as u16 + 2)
-                    .min(f.size().bottom().saturating_sub(area.y + y + 2)),
+                (cand_len.min(5) as u16 + 2).min(f.size().bottom().saturating_sub(area.y + y + 2)),
             );
             f.render_widget(Clear, area);
             f.render_stateful_widget(candidate_list, area, &mut self.state);
@@ -138,7 +253,11 @@ impl MovableComponent for CompletionComponent {
 impl Component for CompletionComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if key == self.key_config.move_down {
             self.next();
             return Ok(EventState::Consumed);
@@ -148,46 +267,55 @@ impl Component for CompletionComponent {
         }
         Ok(EventState::NotConsumed)
     }
-}
 
-#[cfg(test)]
-mod test {
-    use super::{CompletionComponent, KeyConfig};
-
-    #[test]
-    fn test_filterd_candidates_lowercase() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "an", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"AND".to_string()]
-        );
+    fn is_visible(&self) -> bool {
+        return !self.word.is_empty();
     }
 
-    #[test]
-    fn test_filterd_candidates_uppercase() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "AN", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"AND".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_filterd_candidates_multiple_candidates() {
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "n", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"NOT".to_string(), &"NULL".to_string()]
-        );
-
-        assert_eq!(
-            CompletionComponent::new(KeyConfig::default(), "N", false)
-                .filterd_candidates()
-                .collect::<Vec<&String>>(),
-            vec![&"NOT".to_string(), &"NULL".to_string()]
-        );
+    fn reset(&mut self) {
+        self.word = "".to_string();
+        self.state.select(None);
     }
 }
+
+// #[cfg(test)]
+// mod test {
+//     use super::{CompletionComponent, KeyConfig};
+//
+//     #[test]
+//     fn test_filterd_candidates_lowercase() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "an", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"AND".to_string()]
+//         );
+//     }
+//
+//     #[test]
+//     fn test_filterd_candidates_uppercase() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "AN", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"AND".to_string()]
+//         );
+//     }
+//
+//     #[test]
+//     fn test_filterd_candidates_multiple_candidates() {
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "n", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"NOT".to_string(), &"NULL".to_string()]
+//         );
+//
+//         assert_eq!(
+//             CompletionComponent::new(KeyConfig::default(), "N", false)
+//                 .filtered_candidates()
+//                 .collect::<Vec<&String>>(),
+//             vec![&"NOT".to_string(), &"NULL".to_string()]
+//         );
+//     }
+// }

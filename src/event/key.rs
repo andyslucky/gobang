@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crossterm::event;
+use crossterm::event::KeyCode;
 use serde::Deserialize;
 #[cfg(test)]
 use serde::Serialize;
@@ -67,10 +68,39 @@ pub enum Key {
     /// F12 key
     F12,
     Char(char),
-    Ctrl(char),
+    Ctrl(event::KeyCode),
     Alt(char),
     Unknown,
 }
+
+// pub mod from {
+//     // This is just syntactic sugar, so the attribute looks cool like "from::string".
+//     // You don't need to embed multiple modules.
+//     pub mod string {
+//         use crossterm::event;
+//         use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
+//
+//         // This deserializer was originally written with u64 in mind. Then it was made generic by
+//         // changing u64 to T everywhere and adding boundaries. Same with the serializer.
+//         pub fn deserialize<'de, D>(deserializer: D) -> Result<event::KeyCode, D::Error>
+//         where
+//             D: Deserializer<'de>
+//         {
+//             deserializer.de
+//             String::deserialize(deserializer)?
+//                 .parse::<T>()
+//                 .map_err(|e| D::Error::custom(format!("{}", e)))
+//         }
+//
+//         pub fn serialize<S, T>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+//         where
+//             S: Serializer,
+//             T: std::fmt::Display,
+//         {
+//             format!("{}", value).serialize(serializer)
+//         }
+//     }
+// }
 
 impl Key {
     /// Returns the function key corresponding to the given number
@@ -104,10 +134,10 @@ impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Key::Alt(' ') => write!(f, "<Alt+Space>"),
-            Key::Ctrl(' ') => write!(f, "<Ctrl+Space>"),
+            Key::Ctrl(KeyCode::Char(' ')) => write!(f, "<Ctrl+Space>"),
             Key::Char(' ') => write!(f, "<Space>"),
             Key::Alt(c) => write!(f, "<Alt+{}>", c),
-            Key::Ctrl(c) => write!(f, "<Ctrl+{}>", c),
+            Key::Ctrl(KeyCode::Char(c)) => write!(f, "<Ctrl+{}>", c),
             Key::Char(c) => write!(f, "{}", c),
             Key::Left => write!(f, "\u{2190}"),  //←
             Key::Right => write!(f, "\u{2192}"), //→
@@ -131,6 +161,10 @@ impl fmt::Display for Key {
 impl From<event::KeyEvent> for Key {
     fn from(key_event: event::KeyEvent) -> Self {
         match key_event {
+            event::KeyEvent {
+                modifiers: event::KeyModifiers::CONTROL,
+                code,
+            } => Key::Ctrl(code),
             event::KeyEvent {
                 code: event::KeyCode::Esc,
                 ..
@@ -197,11 +231,6 @@ impl From<event::KeyEvent> for Key {
                 code: event::KeyCode::Char(c),
                 modifiers: event::KeyModifiers::ALT,
             } => Key::Alt(c),
-            event::KeyEvent {
-                code: event::KeyCode::Char(c),
-                modifiers: event::KeyModifiers::CONTROL,
-            } => Key::Ctrl(c),
-
             event::KeyEvent {
                 code: event::KeyCode::Char(c),
                 ..

@@ -1,14 +1,15 @@
-
+use crossterm::event;
+use crossterm::event::KeyCode;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 
+use crate::Key;
 use serde::Deserialize;
 #[cfg(test)]
 use serde::Serialize;
 use structopt::StructOpt;
-use crate::Key;
 
 #[derive(StructOpt, Debug)]
 pub struct CliConfig {
@@ -21,7 +22,7 @@ pub struct CliConfig {
 pub struct Config {
     pub conn: Vec<Connection>,
     #[serde(default)]
-    pub key_config: KeyConfig
+    pub key_config: KeyConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -91,7 +92,7 @@ pub struct KeyConfig {
     pub focus_right: Key,
     pub focus_left: Key,
     pub focus_above: Key,
-    pub focus_down : Key,
+    pub focus_down: Key,
     pub focus_connections: Key,
     pub open_help: Key,
     pub filter: Key,
@@ -125,7 +126,7 @@ impl Default for KeyConfig {
             move_down: Key::Down,
             copy: Key::Char('y'),
             enter: Key::Enter,
-            exit: Key::Ctrl('c'),
+            exit: Key::Ctrl(KeyCode::Char('c')),
             quit: Key::Char('q'),
             exit_popup: Key::Esc,
             focus_right: Key::Right,
@@ -135,8 +136,8 @@ impl Default for KeyConfig {
             focus_connections: Key::Char('c'),
             open_help: Key::Char('?'),
             filter: Key::Char('/'),
-            scroll_down_multiple_lines: Key::Ctrl('d'),
-            scroll_up_multiple_lines: Key::Ctrl('u'),
+            scroll_down_multiple_lines: Key::Ctrl(KeyCode::Char('d')),
+            scroll_up_multiple_lines: Key::Ctrl(KeyCode::Char('u')),
             scroll_to_top: Key::Char('g'),
             scroll_to_bottom: Key::Char('G'),
             extend_selection_by_one_cell_left: Key::Char('H'),

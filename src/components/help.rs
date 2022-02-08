@@ -5,13 +5,12 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, BorderType, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    Frame,
 };
-
 
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
@@ -80,7 +79,11 @@ impl DrawableComponent for HelpComponent {
 impl Component for HelpComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
         if self.visible {
             if key == self.key_config.exit_popup {
                 self.hide();
@@ -159,7 +162,7 @@ impl HelpComponent {
                 txt.push(Spans::from(Span::styled(
                     format!(" {}{:w$}", command_info.text.name, w = width),
                     if is_selected {
-                        Style::default().bg(Color::Blue)
+                        Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                     } else {
                         Style::default()
                     },
@@ -193,7 +196,7 @@ mod test {
                 )),
                 Spans::from(Span::styled(
                     " Scroll up/down/left/right [k,j,h,l]  3",
-                    Style::default().bg(Color::Blue)
+                    Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                 )),
                 Spans::from(Span::styled(" Filter [/]  3", Style::default()))
             ]

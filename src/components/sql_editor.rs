@@ -1,28 +1,33 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use itertools::Itertools;
+use log::info;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Wrap},
+    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{GlobalMessageQueue, SharedPool};
+use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
 use crate::components::command::CommandInfo;
-
+use crate::components::completion::PoolFilterableCompletionSource;
+use crate::components::databases::DatabaseEvent;
+use crate::components::tab::{Tab, TabType};
 use crate::components::Drawable;
 use crate::components::EventState::{Consumed, NotConsumed};
-use crate::components::tab::{Tab, TabType};
 use crate::config::KeyConfig;
 use crate::database::ExecuteResult;
 use crate::event::Key;
+use crate::handle_message;
+use crate::sql_utils::find_last_separator;
 use crate::ui::stateful_paragraph::{ParagraphState, StatefulParagraph};
 
 use super::{
-    CompletionComponent, Component, compute_character_width, EventState, MovableComponent, TableComponent,
+    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
+    TableComponent,
 };
 
 struct QueryResult {
@@ -50,11 +55,11 @@ pub struct SqlEditorComponent {
     key_config: KeyConfig,
     paragraph_state: ParagraphState,
     focus: Focus,
-    shared_pool : SharedPool,
-    editor_name : String
+    app_state: AppStateRef,
+    editor_name: String,
 }
 
-impl<B : Backend> Tab<B> for SqlEditorComponent {
+impl<B: Backend> Tab<B> for SqlEditorComponent {
     fn tab_type(&self) -> TabType {
         TabType::Sql
     }
@@ -63,130 +68,90 @@ impl<B : Backend> Tab<B> for SqlEditorComponent {
         self.editor_name.clone()
     }
 
-    fn update_name(&mut self, name : String) {
+    fn update_name(&mut self, name: String) {
         self.editor_name = name;
     }
 }
 
-
 impl SqlEditorComponent {
-    pub fn new(key_config: KeyConfig, shared_pool : SharedPool, editor_name : Option<String>) -> Self {
+    pub async fn new(
+        key_config: KeyConfig,
+        app_state: AppStateRef,
+        editor_name: Option<String>,
+    ) -> Self {
+        let mut completion = CompletionComponent::new(key_config.clone(), "", true);
+        if let Some(src) = app_state.clone().read().await.pool_completion_src().await {
+            completion.completion_source = Box::new(src);
+        }
         Self {
             input: Vec::new(),
             input_idx: 0,
             input_cursor_position_x: 0,
             table: TableComponent::new(key_config.clone()),
-            completion: CompletionComponent::new(key_config.clone(), "", true),
+            completion,
             focus: Focus::Editor,
             paragraph_state: ParagraphState::default(),
             query_result: None,
             key_config,
-            shared_pool,
-            editor_name: editor_name.unwrap_or("Sql Editor".to_string())
+            app_state,
+            editor_name: editor_name.unwrap_or("Sql Editor".to_string()),
         }
     }
 
-    fn update_completion(&mut self) {
-        let input = &self
-            .input
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| i < &self.input_idx)
-            .map(|(_, i)| i)
-            .collect::<String>()
-            .split(' ')
-            .map(|i| i.to_string())
-            .collect::<Vec<String>>();
-        self.completion
-            .update(input.last().unwrap_or(&String::new()));
-    }
-
-    fn complete(&mut self) -> anyhow::Result<EventState> {
-        if let Some(candidate) = self.completion.selected_candidate() {
-            let mut input = Vec::new();
-            let first = self
-                .input
+    fn last_word_part(&self) -> String {
+        let input: String = self.input.clone().into_iter().collect();
+        if let Some(pos) = find_last_separator(&input) {
+            return self.input[(pos.index + pos.length)..self.input_idx]
                 .iter()
-                .enumerate()
-                .filter(|(i, _)| i < &self.input_idx.saturating_sub(self.completion.word().len()))
-                .map(|(_, c)| c.to_string())
-                .collect::<Vec<String>>();
-            let last = self
-                .input
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| i >= &self.input_idx)
-                .map(|(_, c)| c.to_string())
-                .collect::<Vec<String>>();
-
-            let is_last_word = last.first().map_or(false, |c| c == &" ".to_string());
-
-            let middle = if is_last_word {
-                candidate
-                    .chars()
-                    .map(|c| c.to_string())
-                    .collect::<Vec<String>>()
-            } else {
-                let mut c = candidate
-                    .chars()
-                    .map(|c| c.to_string())
-                    .collect::<Vec<String>>();
-                c.push(" ".to_string());
-                c
-            };
-
-            input.extend(first);
-            input.extend(middle.clone());
-            input.extend(last);
-
-            self.input = input.join("").chars().collect();
-            self.input_idx += &middle.len();
-            if is_last_word {
-                self.input_idx += 1;
-            }
-            self.input_idx -= self.completion.word().len();
-            self.input_cursor_position_x += middle
-                .join("")
-                .chars()
-                .map(|c| compute_character_width(&c))
-                .sum::<u16>();
-            if is_last_word {
-                self.input_cursor_position_x += " ".to_string().width() as u16
-            }
-            self.input_cursor_position_x -= self
-                .completion
-                .word()
-                .chars()
-                .map(|c| compute_character_width(&c))
-                .sum::<u16>();
-            self.update_completion();
-            return Ok(EventState::Consumed);
+                .collect();
         }
-        Ok(EventState::NotConsumed)
+        input
     }
 
+    fn complete(&mut self) {
+        // TODO : Cleanup editor code before implementing completion!
+        info!("TODO: reimplement completion!");
+        if let Some(candidate) = self.completion.selected_candidate() {}
+        self.completion.reset();
+    }
 
-    async fn editor_key_event(&mut self, key : Key, _ :&mut GlobalMessageQueue) -> Result<EventState>{
+    async fn editor_key_event(
+        &mut self,
+        key: Key,
+        _: &mut GlobalMessageQueue,
+    ) -> Result<EventState> {
         match key {
             Key::Char(c) => {
                 self.input.insert(self.input_idx, c);
                 self.input_idx += 1;
                 self.input_cursor_position_x += compute_character_width(&c);
-                self.update_completion();
-
+                let last_w = self.last_word_part();
+                self.completion.update(last_w).await;
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::Enter => {
-               // TODO : Implement enter key
-                self.input.insert(self.input_idx,'\n');
-                self.input_idx += 1;
-                self.input_cursor_position_x = 0;
-                return Ok(Consumed);
-            },
+                if self.completion.is_visible() {
+                    self.complete();
+                    return Ok(Consumed);
+                } else {
+                    // TODO : Implement enter key
+                    self.input.insert(self.input_idx, '\n');
+                    self.input_idx += 1;
+                    self.input_cursor_position_x = 0;
+                    return Ok(Consumed);
+                }
+            }
+
+            Key::Tab => {
+                if self.completion.is_visible() {
+                    self.complete();
+                    return Ok(Consumed);
+                }
+            }
             Key::Esc => {
                 self.focus = Focus::Table;
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::Backspace => {
                 let input_str: String = self.input.iter().collect();
                 if input_str.width() > 0 && !self.input.is_empty() && self.input_idx > 0 {
@@ -195,50 +160,48 @@ impl SqlEditorComponent {
                     if last_c == '\n' {
                         let mut x_offset = 0;
                         for c in self.input.iter().rev() {
-                           if *c == '\n' {
-                               break
-                           }
+                            if *c == '\n' {
+                                break;
+                            }
                             x_offset += compute_character_width(c);
                         }
                         self.input_cursor_position_x = x_offset;
                     } else {
                         self.input_cursor_position_x -= compute_character_width(&last_c);
                     }
-                    self.completion.update("");
+                    // self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
-            },
-            Key::Left  => {
+            }
+            Key::Left => {
                 if !self.input.is_empty() && self.input_idx > 0 {
                     self.input_idx -= 1;
                     self.input_cursor_position_x = self
                         .input_cursor_position_x
                         .saturating_sub(compute_character_width(&self.input[self.input_idx]));
-                    self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
             }
-            Key::Right  => {
+            Key::Right => {
                 if self.input_idx < self.input.len() {
                     let next_c = self.input[self.input_idx];
                     self.input_idx += 1;
                     self.input_cursor_position_x += compute_character_width(&next_c);
-                    self.completion.update("");
                 }
                 return Ok(EventState::Consumed);
-            },
+            }
             Key::F5 => {
-                    let query : String = self.input.iter().collect();
-                    self.execute_query(query).await?;
-                    return Ok(EventState::Consumed);
-            },
-            _ => ()
+                let query: String = self.input.iter().collect();
+                self.execute_query(query).await?;
+                return Ok(EventState::Consumed);
+            }
+            _ => (),
         }
         Ok(NotConsumed)
     }
 
     async fn execute_query(&mut self, query: String) -> Result<()> {
-        if let Some(pool) = self.shared_pool.read().await.as_ref() {
+        if let Some(pool) = self.app_state.read().await.shared_pool.as_ref() {
             let result = pool.execute(&query).await?;
             match result {
                 ExecuteResult::Read {
@@ -258,10 +221,9 @@ impl SqlEditorComponent {
         }
         Ok(())
     }
-
 }
 
-impl<B : Backend> Drawable<B> for SqlEditorComponent {
+impl<B: Backend> Drawable<B> for SqlEditorComponent {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -275,7 +237,11 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
         let editor = StatefulParagraph::new(self.input.iter().collect::<String>())
             .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL))
-            .style(if focused {Style::default()} else {Style::default().fg(Color::DarkGray)});
+            .style(if focused {
+                Style::default()
+            } else {
+                Style::default().fg(Color::DarkGray)
+            });
 
         f.render_stateful_widget(editor, layout[0], &mut self.paragraph_state);
 
@@ -328,9 +294,11 @@ impl<B : Backend> Drawable<B> for SqlEditorComponent {
 impl Component for SqlEditorComponent {
     fn commands(&self, _out: &mut Vec<CommandInfo>) {}
 
-    async fn event(&mut self, key: crate::event::Key, message_queue: &mut GlobalMessageQueue) -> Result<EventState> {
-
-
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        message_queue: &mut GlobalMessageQueue,
+    ) -> Result<EventState> {
         // if key == self.key_config.focus_above && matches!(self.focus, Focus::Table) {
         //     self.focus = Focus::Editor
         // } else if key == self.key_config.enter {
@@ -338,9 +306,7 @@ impl Component for SqlEditorComponent {
         // }
 
         return match self.focus {
-            Focus::Editor => {
-                self.editor_key_event(key, message_queue).await
-            }
+            Focus::Editor => self.editor_key_event(key, message_queue).await,
             Focus::Table => {
                 if key == self.key_config.focus_above {
                     self.focus = Focus::Editor;
@@ -348,6 +314,18 @@ impl Component for SqlEditorComponent {
                 }
                 self.table.event(key, message_queue).await
             }
+        };
+    }
+
+    async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        for m in messages.iter() {
+            handle_message!(m,DatabaseEvent, DatabaseEvent::TableSelected(datbase, table) => {
+
+                if let Some(src) = self.app_state.read().await.pool_completion_src().await {
+                    self.completion.completion_source = Box::new(src);
+                }
+            });
         }
+        Ok(())
     }
 }

@@ -4,15 +4,15 @@ use async_trait::async_trait;
 
 use futures::TryStreamExt;
 use itertools::Itertools;
-use sqlx::{Column as _, Row as _};
 use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::{Column as _, Row as _};
 
 use database_tree::{Child, Database, Schema, Table};
 
-use crate::{pool_exec_impl};
-use crate::database::{Column, Constraint, convert_column_val_to_str, ForeignKey, Index};
+use crate::database::{convert_column_val_to_str, Column, Constraint, ForeignKey, Index};
+use crate::pool_exec_impl;
 
-use super::{ExecuteResult, Pool, RECORDS_LIMIT_PER_PAGE, TableRow};
+use super::{ExecuteResult, Pool, TableRow, RECORDS_LIMIT_PER_PAGE};
 
 pub struct PostgresPool {
     pool: PgPool,
@@ -32,7 +32,7 @@ impl PostgresPool {
 #[async_trait]
 impl Pool for PostgresPool {
     async fn execute(&self, query: &String) -> anyhow::Result<ExecuteResult> {
-        pool_exec_impl!(&self.pool,query);
+        pool_exec_impl!(&self.pool, query);
     }
 
     async fn get_databases(&self) -> anyhow::Result<Vec<Database>> {
@@ -55,7 +55,7 @@ impl Pool for PostgresPool {
     async fn get_tables(&self, database: String) -> anyhow::Result<Vec<Child>> {
         let mut rows =
             sqlx::query("SELECT * FROM information_schema.tables WHERE table_catalog = $1")
-                .bind(database)
+                .bind(database.clone())
                 .fetch(&self.pool);
         let mut tables = Vec::new();
         while let Some(row) = rows.try_next().await? {
@@ -65,6 +65,7 @@ impl Pool for PostgresPool {
                 update_time: None,
                 engine: None,
                 schema: row.try_get("table_schema")?,
+                database: Some(database.clone()),
             })
         }
         let mut schemas = vec![];
@@ -165,11 +166,11 @@ impl Pool for PostgresPool {
         Ok((headers, records))
     }
 
-    async fn get_columns(
-        &self,
-        database: &Database,
-        table: &Table,
-    ) -> anyhow::Result<Vec<Box<dyn TableRow>>> {
+    async fn get_columns(&self, table: &Table) -> anyhow::Result<Vec<Column>> {
+        let database_name = table.clone().database.ok_or(anyhow::Error::msg(format!(
+            "No database found containing table {}",
+            table.name
+        )))?;
         let table_schema = table
             .schema
             .as_ref()
@@ -177,17 +178,17 @@ impl Pool for PostgresPool {
         let mut rows = sqlx::query(
             "SELECT * FROM information_schema.columns WHERE table_catalog = $1 AND table_schema = $2 AND table_name = $3"
         )
-        .bind(&database.name).bind(table_schema).bind(&table.name)
+        .bind(database_name).bind(table_schema).bind(&table.name)
         .fetch(&self.pool);
-        let mut columns: Vec<Box<dyn TableRow>> = vec![];
+        let mut columns: Vec<Column> = vec![];
         while let Some(row) = rows.try_next().await? {
-            columns.push(Box::new(Column {
+            columns.push(Column {
                 name: row.try_get("column_name")?,
                 r#type: row.try_get("data_type")?,
                 null: row.try_get("is_nullable")?,
                 default: row.try_get("column_default")?,
                 comment: None,
-            }))
+            })
         }
         Ok(columns)
     }
@@ -225,7 +226,7 @@ impl Pool for PostgresPool {
             constraints.push(Box::new(Constraint {
                 name: row.try_get("constraint_name")?,
                 column_name: row.try_get("column_name")?,
-                origin: None
+                origin: None,
             }))
         }
         Ok(constraints)
@@ -353,5 +354,3 @@ impl PostgresPool {
         Ok(json.iter().map(|v| v.clone().0).collect())
     }
 }
-
-

@@ -1,27 +1,24 @@
 use std::convert::From;
 
-use anyhow::Result;
-use async_trait::async_trait;
-use tui::{
-    backend::Backend,
-    Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Cell, Row, Table, TableState},
-};
-use unicode_width::UnicodeWidthStr;
-use database_tree::{Database, Table as DTable};
+use crate::clipboard::copy_to_clipboard;
 use crate::components::command::{self, CommandInfo};
 use crate::components::Drawable;
 use crate::config::KeyConfig;
+use anyhow::Result;
+use async_trait::async_trait;
+use database_tree::{Database, Table as DTable};
+use tui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, Cell, Row, Table, TableState},
+    Frame,
+};
+use unicode_width::UnicodeWidthStr;
 
 use super::{
-    Component,
-    DrawableComponent,
-    EventState,
-    TableStatusComponent,
-    TableValueComponent,
-    utils::scroll_vertical::VerticalScroll
+    utils::scroll_vertical::VerticalScroll, Component, DrawableComponent, EventState,
+    TableStatusComponent, TableValueComponent,
 };
 
 pub struct TableComponent {
@@ -407,7 +404,7 @@ impl TableComponent {
     }
 }
 
-impl<B : Backend> Drawable<B> for TableComponent {
+impl<B: Backend> Drawable<B> for TableComponent {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, focused: bool) -> Result<()> {
         let chunks = Layout::default()
             .vertical_margin(1)
@@ -469,7 +466,7 @@ impl<B : Backend> Drawable<B> for TableComponent {
             let cells = item.iter().enumerate().map(|(column_index, c)| {
                 Cell::from(c.to_string()).style(
                     if self.is_selected_cell(row_index, column_index, selected_column_index) {
-                        Style::default().bg(Color::Blue)
+                        Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b))
                     } else if self.is_number_column(row_index, column_index) {
                         Style::default().add_modifier(Modifier::BOLD)
                     } else {
@@ -532,7 +529,17 @@ impl Component for TableComponent {
         )));
     }
 
-    async fn event(&mut self, key: crate::event::Key, _message_queue: &mut crate::app::GlobalMessageQueue) -> Result<EventState> {
+    async fn event(
+        &mut self,
+        key: crate::event::Key,
+        _message_queue: &mut crate::app::GlobalMessageQueue,
+    ) -> Result<EventState> {
+        if key == self.key_config.copy {
+            if let Some(text) = self.selected_cells() {
+                copy_to_clipboard(text.as_str())?;
+                return Ok(EventState::Consumed);
+            }
+        }
         if key == self.key_config.scroll_left {
             self.previous_column();
             return Ok(EventState::Consumed);

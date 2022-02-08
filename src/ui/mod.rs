@@ -1,3 +1,4 @@
+use crate::app::AppMessage;
 use database_tree::MoveSelection;
 
 use crate::config::KeyConfig;
@@ -32,4 +33,8 @@ pub fn common_nav(key: Key, key_config: &KeyConfig) -> Option<MoveSelection> {
     } else {
         None
     }
+}
+#[derive(Debug)]
+pub struct ComponentStyles {
+    pub borders: Option<tui::widgets::Borders>,
 }

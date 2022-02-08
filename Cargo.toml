@@ -17,9 +17,10 @@ members=[
 
 [dependencies]
 log4rs = {version = "1.0.0", features = ["file_appender"]}
+regex = "1.5.4"
 log = "0.4.14"
 tui = { version = "0.17.0", features = ["crossterm"], default-features = false }
-crossterm = "0.20"
+crossterm = { version = "0.23", features=["serde"]}
 anyhow = "1.0.38"
 unicode-width = "0.1"
 sqlx = { version = "0.5.6", features = ["mysql", "postgres", "sqlite", "chrono", "runtime-tokio-rustls", "decimal", "json"], default-features = false }
