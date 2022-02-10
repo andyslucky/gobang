@@ -1,24 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use crossterm::event::KeyCode;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
 };
 
-use database_tree::{Child, Database, Table as DTable};
+use database_tree::{Database, Table as DTable};
 
 use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
-use crate::clipboard::copy_to_clipboard;
 use crate::components::command::CommandInfo;
-use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::databases::DatabaseEvent;
 use crate::components::databases::DatabaseEvent::TableSelected;
 use crate::components::tab::{Tab, TabType};
 use crate::components::EventState::{Consumed, NotConsumed};
-use crate::components::{Drawable, TableComponent, TableFilterComponent};
+use crate::components::{Drawable, DrawableComponent, TableComponent};
 use crate::config::KeyConfig;
+use crate::ui::textbox::TextBox;
 use crate::{handle_message, Key};
 
 use super::{Component, EventState};
@@ -29,7 +27,7 @@ pub enum Focus {
 }
 
 pub struct RecordTableComponent {
-    pub filter: TableFilterComponent,
+    pub filter: TextBox,
     pub table: TableComponent,
     pub focus: Focus,
     key_config: KeyConfig,
@@ -67,7 +65,9 @@ impl<B: Backend> Tab<B> for RecordTableComponent {
 impl RecordTableComponent {
     pub fn new(key_config: KeyConfig, app_state: AppStateRef) -> Self {
         Self {
-            filter: TableFilterComponent::new(key_config.clone()),
+            filter: TextBox::default()
+                .with_placeholder("Enter SQL expression to filter records")
+                .with_completion(key_config.clone()),
             table: TableComponent::new(key_config.clone()),
             focus: Focus::Table,
             key_config,
@@ -89,7 +89,7 @@ impl RecordTableComponent {
                 let mut headers: Vec<String> = vec![];
                 let mut rows: Vec<Vec<String>> = vec![];
                 if let Some(pool) = self.app_state.read().await.shared_pool.as_ref() {
-                    let filter = self.filter.input_str();
+                    let filter = self.filter.get_text();
                     let res = pool
                         .get_records(
                             database,
@@ -107,7 +107,8 @@ impl RecordTableComponent {
                 }
                 self.table
                     .update(rows, headers, database.clone(), table.clone());
-                self.filter.set_table(table.clone());
+                self.filter.set_label(table.clone().name);
+                // self.filter.set_table(table.clone());
             }
         }
 
@@ -149,18 +150,12 @@ impl Component for RecordTableComponent {
                         self.reload_results_table().await?;
                         self.focus = Focus::Table;
                         Ok(Consumed)
-                    } else {
-                        Ok(NotConsumed)
-                    }
-                    /*
-                     else if key == Key::Ctrl(KeyCode::Char('c')) || key == Key::Ctrl(KeyCode::Char('C')){
-                        Ok(NotConsumed)
-                    } else {
-                        // swallow other
+                    } else if key == Key::Esc {
+                        self.focus = Focus::Table;
                         Ok(Consumed)
+                    } else {
+                        Ok(NotConsumed)
                     }
-
-                    */
                 }
             }
         };

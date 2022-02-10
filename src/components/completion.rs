@@ -1,9 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use database_tree::{Child, Database, Table};
-use futures::{join, try_join};
+use futures::try_join;
 use log::{debug, error};
-use std::pin::Pin;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -12,7 +11,6 @@ use tui::{
     Frame,
 };
 
-use crate::app::AppMessage;
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
 use crate::database::{Column, Pool};
@@ -151,11 +149,11 @@ pub struct CompletionComponent {
 }
 
 impl CompletionComponent {
-    pub fn new(key_config: KeyConfig, word: impl Into<String>, all: bool) -> Self {
+    pub fn new(key_config: KeyConfig) -> Self {
         Self {
             key_config,
             state: ListState::default(),
-            word: word.into(),
+            word: String::new(),
             candidates: vec![],
             completion_source: Box::new(DefaultFilterableCompletionSource::new()),
         }
@@ -179,10 +177,14 @@ impl CompletionComponent {
         }
     }
 
-    fn change_selection(&mut self, offset: i32) {
+    fn change_selection(&mut self, offset: i8) {
         if let Some(i) = self.state.selected() {
-            let new_selected_index = (i as i32 + offset) as usize;
-            if new_selected_index >= 0 && new_selected_index < self.candidates.len() {
+            let new_selected_index = if offset > 0 {
+                i + (offset as usize)
+            } else {
+                i - (offset.abs() as usize)
+            };
+            if new_selected_index < self.candidates.len() {
                 self.state.select(Some(new_selected_index));
             }
         }
@@ -203,15 +205,11 @@ impl CompletionComponent {
             None
         }
     }
-
-    pub fn word(&self) -> String {
-        self.word.to_string()
-    }
 }
 
 impl MovableComponent for CompletionComponent {
     fn draw<B: Backend>(
-        &mut self,
+        &self,
         f: &mut Frame<B>,
         area: Rect,
         _focused: bool,
@@ -243,7 +241,8 @@ impl MovableComponent for CompletionComponent {
                 (cand_len.min(5) as u16 + 2).min(f.size().bottom().saturating_sub(area.y + y + 2)),
             );
             f.render_widget(Clear, area);
-            f.render_stateful_widget(candidate_list, area, &mut self.state);
+            let mut st = self.state.clone();
+            f.render_stateful_widget(candidate_list, area, &mut st);
         }
         Ok(())
     }

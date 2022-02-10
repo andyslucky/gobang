@@ -1,4 +1,3 @@
-use crossterm::event;
 use crossterm::event::KeyCode;
 use std::fmt;
 use std::fs::File;

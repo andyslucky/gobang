@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use anyhow::Result;
 use async_trait::async_trait;
 use tui::{backend::Backend, layout::Rect, Frame};
@@ -19,7 +17,6 @@ pub use record_table::RecordTableComponent;
 pub use sql_editor::SqlEditorComponent;
 pub use tab::TabToolbar;
 pub use table::TableComponent;
-pub use table_filter::TableFilterComponent;
 pub use table_status::TableStatusComponent;
 pub use table_value::TableValueComponent;
 
@@ -37,7 +34,6 @@ pub mod record_table;
 pub mod sql_editor;
 pub mod tab;
 pub mod table;
-pub mod table_filter;
 pub mod table_status;
 pub mod table_value;
 pub mod utils;
@@ -89,7 +85,7 @@ pub trait Drawable<B: Backend> {
 
 pub trait MovableComponent {
     fn draw<B: Backend>(
-        &mut self,
+        &self,
         f: &mut Frame<B>,
         rect: Rect,
         focused: bool,

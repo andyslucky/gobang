@@ -4,8 +4,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use strum_macros::EnumIter;
 use tui::layout::{Constraint, Direction, Layout};
-use tui::widgets::canvas::Label;
-use tui::widgets::Paragraph;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -153,7 +151,7 @@ impl Component for TabToolbar {
         if self.is_renaming {
             return match key {
                 Key::Enter => {
-                    let new_tab_name = self.rename_box.input_str();
+                    let new_tab_name = self.rename_box.get_text();
                     self.is_renaming = false;
                     message_queue.push(Box::new(TabMessage::RenameTab(
                         self.selected_tab_index,

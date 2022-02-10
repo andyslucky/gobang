@@ -1,4 +1,3 @@
-use crate::app::AppMessage;
 use database_tree::MoveSelection;
 
 use crate::config::KeyConfig;

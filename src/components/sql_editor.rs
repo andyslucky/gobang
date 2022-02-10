@@ -1,6 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use itertools::Itertools;
 use log::info;
 use tui::{
     backend::Backend,
@@ -13,7 +12,6 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
 use crate::components::command::CommandInfo;
-use crate::components::completion::PoolFilterableCompletionSource;
 use crate::components::databases::DatabaseEvent;
 use crate::components::tab::{Tab, TabType};
 use crate::components::Drawable;
@@ -79,7 +77,7 @@ impl SqlEditorComponent {
         app_state: AppStateRef,
         editor_name: Option<String>,
     ) -> Self {
-        let mut completion = CompletionComponent::new(key_config.clone(), "", true);
+        let mut completion = CompletionComponent::new(key_config.clone());
         if let Some(src) = app_state.clone().read().await.pool_completion_src().await {
             completion.completion_source = Box::new(src);
         }
@@ -111,7 +109,7 @@ impl SqlEditorComponent {
     fn complete(&mut self) {
         // TODO : Cleanup editor code before implementing completion!
         info!("TODO: reimplement completion!");
-        if let Some(candidate) = self.completion.selected_candidate() {}
+        // if let Some(_) = self.completion.selected_candidate() {}
         self.completion.reset();
     }
 
@@ -319,7 +317,7 @@ impl Component for SqlEditorComponent {
 
     async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
         for m in messages.iter() {
-            handle_message!(m,DatabaseEvent, DatabaseEvent::TableSelected(datbase, table) => {
+            handle_message!(m,DatabaseEvent, DatabaseEvent::TableSelected(_, _) => {
 
                 if let Some(src) = self.app_state.read().await.pool_completion_src().await {
                     self.completion.completion_source = Box::new(src);
