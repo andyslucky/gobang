@@ -180,9 +180,9 @@ impl CompletionComponent {
     fn change_selection(&mut self, offset: i8) {
         if let Some(i) = self.state.selected() {
             let new_selected_index = if offset > 0 {
-                i + (offset as usize)
+                i.saturating_add(offset as usize)
             } else {
-                i - (offset.abs() as usize)
+                i.saturating_sub(offset.abs() as usize)
             };
             if new_selected_index < self.candidates.len() {
                 self.state.select(Some(new_selected_index));

@@ -75,6 +75,7 @@ impl From<bool> for EventState {
     }
 }
 
+// TODO : Squash these 2 traits. Do not think a draw call should ever modify the component.
 pub trait DrawableComponent {
     fn draw<B: Backend>(&self, f: &mut Frame<B>, rect: Rect, focused: bool) -> Result<()>;
 }
