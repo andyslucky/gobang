@@ -6,7 +6,6 @@ use unicode_width::UnicodeWidthChar;
 pub use command::{CommandInfo, CommandText};
 pub use completion::CompletionComponent;
 pub use connections::ConnectionsComponent;
-pub use database_filter::DatabaseFilterComponent;
 pub use databases::DatabasesComponent;
 #[cfg(debug_assertions)]
 pub use debug::DebugComponent;
@@ -25,7 +24,6 @@ use crate::app::AppMessage;
 pub mod command;
 pub mod completion;
 pub mod connections;
-pub mod database_filter;
 pub mod databases;
 pub mod error;
 pub mod help;
