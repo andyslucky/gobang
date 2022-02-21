@@ -293,6 +293,14 @@ impl DrawableComponent for TextBox {
             },
             w = text_rect.width as usize
         )))
+        .scroll((
+            0,
+            if self.input_cursor_position > (text_rect.width as usize) {
+                self.input_cursor_position as u16 - text_rect.width
+            } else {
+                0
+            },
+        ))
         .style(if focused && !self.input.is_empty() {
             Style::default()
         } else {

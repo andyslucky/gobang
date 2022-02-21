@@ -18,6 +18,7 @@ mod components;
 mod config;
 mod database;
 mod event;
+mod saturating_types;
 mod sql_utils;
 mod ui;
 mod version;

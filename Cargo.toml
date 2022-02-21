@@ -16,6 +16,7 @@ members=[
 ]
 
 [dependencies]
+libtok2me = {git = "https://github.com/andyslucky/libtok2me"}
 log4rs = {version = "1.0.0", features = ["file_appender"]}
 regex = "1.5.4"
 log = "0.4.14"

@@ -76,7 +76,7 @@ impl Component for ErrorComponent {
                 self.hide();
                 return Ok(EventState::Consumed);
             }
-            return Ok(EventState::NotConsumed);
+            return Ok(EventState::Consumed);
         }
         Ok(EventState::NotConsumed)
     }
