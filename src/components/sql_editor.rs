@@ -3,19 +3,19 @@ use async_trait::async_trait;
 use log::info;
 use tui::{
     backend::Backend,
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Wrap},
+    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
-use crate::components::{Drawable, DrawableComponent};
 use crate::components::command::CommandInfo;
 use crate::components::databases::DatabaseEvent;
-use crate::components::EventState::{Consumed, NotConsumed};
 use crate::components::tab::{Tab, TabType};
+use crate::components::EventState::{Consumed, NotConsumed};
+use crate::components::{Drawable, DrawableComponent};
 use crate::config::KeyConfig;
 use crate::database::ExecuteResult;
 use crate::event::Key;
@@ -25,7 +25,7 @@ use crate::ui::stateful_paragraph::{ParagraphState, StatefulParagraph};
 use crate::ui::textarea::TextArea;
 
 use super::{
-    CompletionComponent, Component, compute_character_width, EventState, MovableComponent,
+    compute_character_width, CompletionComponent, Component, EventState, MovableComponent,
     TableComponent,
 };
 
@@ -75,8 +75,6 @@ impl SqlEditorComponent {
         app_state: AppStateRef,
         editor_name: Option<String>,
     ) -> Self {
-        // TODO: Move into text editor component
-       
         Self {
             text_area: TextArea::new(key_config.clone(), app_state.clone()).await,
             table: TableComponent::new(key_config.clone()),
@@ -176,7 +174,6 @@ impl Component for SqlEditorComponent {
         key: crate::event::Key,
         message_queue: &mut GlobalMessageQueue,
     ) -> Result<EventState> {
-
         return match self.focus {
             Focus::Editor => self.editor_key_event(key, message_queue).await,
             Focus::Table => {
@@ -187,5 +184,10 @@ impl Component for SqlEditorComponent {
                 self.table.event(key, message_queue).await
             }
         };
+    }
+
+    async fn handle_messages(&mut self, messages: &Vec<Box<dyn AppMessage>>) -> Result<()> {
+        self.text_area.handle_messages(messages).await?;
+        Ok(())
     }
 }

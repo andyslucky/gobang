@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
+use log::debug;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
@@ -12,10 +13,11 @@ use tui::Frame;
 use crate::app::{AppMessage, AppStateRef, GlobalMessageQueue};
 use crate::components::databases::DatabaseEvent;
 use crate::components::EventState::{Consumed, NotConsumed};
-use crate::components::{CommandInfo, DrawableComponent, EventState};
+use crate::components::{CommandInfo, DrawableComponent, EventState, MovableComponent};
 use crate::components::{CompletionComponent, Component};
 use crate::config::KeyConfig;
 use crate::saturating_types::SaturatingU16;
+use crate::sql_utils::find_last_separator;
 use crate::{handle_message, Key};
 
 #[derive(Clone)]
@@ -71,6 +73,37 @@ impl TextArea {
             .collect();
         Text::from(lines)
     }
+
+    async fn update_completion(&mut self) {
+        let col = self.cursor_position.col.0 as usize;
+        if let Some(current_line) = self.buffer.get(self.cursor_position.row.0 as usize) {
+            if let Some(last_sep) = find_last_separator(&current_line[0..col]) {
+                let last_word_part = &current_line[(last_sep.index + last_sep.length)..col];
+                self.completion.update(last_word_part).await;
+            } else {
+                self.completion.update(&current_line[0..col]).await;
+            }
+        }
+    }
+
+    fn replace_last_word(&mut self, candidate: &String) {
+        let col = self.cursor_position.col.0 as usize;
+        if let Some(current_line) = self.buffer.get_mut(self.cursor_position.row.0 as usize) {
+            debug!("Here is the current line {}", current_line);
+            if let Some(last_sep) = find_last_separator(&current_line[0..col]) {
+                debug!("Last separator is {}", last_sep);
+                // let last_word_part = &current_line[(last_sep.index + last_sep.length)..col];
+                current_line.drain((last_sep.index + last_sep.length)..col);
+                current_line.insert_str(last_sep.index + last_sep.length, candidate);
+                self.cursor_position.col.0 =
+                    (last_sep.index + last_sep.length) as u16 + candidate.len() as u16;
+            } else {
+                let r = 0..current_line.len();
+                current_line.replace_range(r, candidate.as_str());
+                self.cursor_position.col.0 = candidate.len() as u16;
+            }
+        }
+    }
 }
 
 impl DrawableComponent for TextArea {
@@ -87,7 +120,11 @@ impl DrawableComponent for TextArea {
 
         let p = Paragraph::new(self.lines_as_text_model())
             .scroll((
-                0, // TODO: Fix row scrolling
+                if row >= text_area_frame.height {
+                    (row - text_area_frame.height) + 1
+                } else {
+                    0
+                },
                 if col > text_area_frame.width {
                     col - text_area_frame.width
                 } else {
@@ -100,22 +137,28 @@ impl DrawableComponent for TextArea {
                 Style::default()
             });
         f.render_widget(p, text_area_frame);
+
         if focused {
-            f.set_cursor(
-                text_area_frame.x
-                    + if col > text_area_frame.width {
-                        text_area_frame.width
-                    } else {
-                        col
-                    },
-                text_area_frame.y
-                    + if row > text_area_frame.height {
-                        text_area_frame.height
-                    } else {
-                        row
-                    },
-            );
+            let cursor_x = if col + text_area_frame.left() >= text_area_frame.right() {
+                text_area_frame.right()
+            } else {
+                col + text_area_frame.left()
+            };
+
+            let cursor_y = if row + text_area_frame.top() >= text_area_frame.bottom() {
+                text_area_frame.bottom() - 1
+            } else {
+                row + text_area_frame.top()
+            };
+            f.set_cursor(cursor_x, cursor_y);
         }
+        self.completion.draw(
+            f,
+            text_area_frame,
+            false,
+            text_area_frame.x + self.cursor_position.col.0,
+            text_area_frame.y + (self.cursor_position.row + 1).0,
+        )?;
         Ok(())
     }
 }
@@ -130,6 +173,14 @@ impl Component for TextArea {
         _message_queue: &mut GlobalMessageQueue,
     ) -> anyhow::Result<EventState> {
         // TODO: Move this logic to a TextAreaModel
+        if self
+            .completion
+            .event(key, _message_queue)
+            .await?
+            .is_consumed()
+        {
+            return Ok(Consumed);
+        }
         let col = self.cursor_position.col.clone();
         let row = self.cursor_position.row.clone();
         let curr_line_length = self
@@ -154,9 +205,19 @@ impl Component for TextArea {
                 }
             };
             current_line.insert(col.0 as usize, c);
-
             self.cursor_position.col += 1;
+            self.update_completion().await;
             return Ok(Consumed);
+        }
+
+        if (key == Key::Enter || key == Key::Tab) && self.completion.is_visible() {
+            // panic!("Please implement auto complete functionality currectly!");
+            if let Some(cand) = self.completion.selected_candidate() {
+                debug!("Here is the candidate for textarea completion {}", cand);
+                self.replace_last_word(&cand);
+                self.completion.reset();
+                return Ok(Consumed);
+            }
         }
 
         if key == Key::Enter {
@@ -215,12 +276,14 @@ impl Component for TextArea {
         }
 
         if key == Key::Backspace {
+            // FIXME: Fix backspace bug when current line is empty, the next line will be erased.
             if col == 0 && (row - 1) < last_line_length {
                 let current_line = self.buffer.pop().unwrap_or(String::new());
                 if let Some(prev_line) = self.buffer.get_mut((row - 1).0 as usize) {
                     prev_line.insert_str(last_line_length as usize, current_line.as_str());
                     self.cursor_position.col = last_line_length.into();
                     self.cursor_position.row -= 1;
+                    self.update_completion().await;
                     return Ok(Consumed);
                 }
             } else if let Some(current_line) = self.buffer.get_mut(row.0 as usize) {
@@ -230,10 +293,12 @@ impl Component for TextArea {
                         self.cursor_position.col = prev_line_length.into();
                         self.cursor_position.row -= 1;
                     }
+                    self.update_completion().await;
                     return Ok(Consumed);
                 } else if ((col - 1).0 as usize) < current_line.len() {
                     current_line.remove((col - 1).0 as usize);
                     self.cursor_position.col -= 1;
+                    self.update_completion().await;
                     return Ok(Consumed);
                 }
             }
@@ -269,7 +334,6 @@ impl Component for TextArea {
         if key == Key::Up {
             if row > 0 {
                 self.cursor_position.row -= 1;
-
                 if col > last_line_length {
                     self.cursor_position.col = last_line_length.into();
                 }

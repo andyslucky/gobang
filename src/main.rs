@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::io;
 
 use anyhow::Result;
@@ -48,13 +50,13 @@ async fn main() -> anyhow::Result<()> {
         match events.next()? {
             Event::Input(key) => match app.event(key).await {
                 Ok(state) => {
-                    debug!(
-                        "Key pressed {:?} state consumed {}. Quit key {:?} exit key {:?}",
-                        key,
-                        state.is_consumed(),
-                        app.config.key_config.quit,
-                        app.config.key_config.exit
-                    );
+                    // debug!(
+                    //     "Key pressed {:?} state consumed {}. Quit key {:?} exit key {:?}",
+                    //     key,
+                    //     state.is_consumed(),
+                    //     app.config.key_config.quit,
+                    //     app.config.key_config.exit
+                    // );
                     if !state.is_consumed()
                         && (key == app.config.key_config.quit
                             || key == Key::Ctrl(crossterm::event::KeyCode::Char('c'))

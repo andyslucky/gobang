@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use crossterm::event;
 use crossterm::event::KeyCode;
+use std::borrow::Borrow;
 use tui::backend::Backend;
 use tui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use tui::style::{Color, Style};
@@ -121,9 +122,17 @@ impl TextBox {
             .map(|index| compute_character_width(&self.input[index as usize]) as usize)
             .sum::<usize>()
             + label_length;
-        let cursor_y_pos = area.y + (area.height / 2);
-
-        return ((area.x + curs_x_offset as u16) + 1, cursor_y_pos);
+        let cursor_y_pos = if area.height == 1 {
+            area.y
+        } else {
+            area.y + (area.height / 2)
+        };
+        let cursor_x_pos = if (area.x + curs_x_offset as u16) + 1 >= area.right() {
+            area.right()
+        } else {
+            area.x + curs_x_offset as u16 + 1
+        };
+        return (cursor_x_pos, cursor_y_pos);
     }
 
     /// Replaces the text between the last separator and the cursor with the arg `text`
@@ -252,7 +261,6 @@ impl DrawableComponent for TextBox {
             0
         };
 
-        // TODO: Implement text-align
         let text_field_block = Block::default().borders(Borders::ALL).style(if focused {
             Style::default()
         } else {
