@@ -136,7 +136,7 @@ impl FilterableCompletionSource for DefaultFilterableCompletionSource {
             .filter(|kw| patt.is_match(kw.as_str()))
             .map(|kw| kw.clone())
             .collect();
-        debug!("Filtered candidates {:?}", candidates);
+        // debug!("Filtered candidates {:?}", candidates);
         return Ok(candidates);
     }
 }
@@ -170,7 +170,7 @@ impl CompletionComponent {
         if let Err(e) = &candidates_res {
             error!("Error fetching completion candidates {}", e);
         } else if let Ok(candidates) = &candidates_res {
-            debug!("Filtered candidates {:?}", candidates);
+            // debug!("Filtered candidates {:?}", candidates);
             self.candidates = candidates.clone();
             if !self.candidates.is_empty() {
                 self.state.select(Some(0));

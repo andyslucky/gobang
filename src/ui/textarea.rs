@@ -1,5 +1,4 @@
 use anyhow::Result;
-
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use log::debug;
@@ -104,6 +103,148 @@ impl TextArea {
             }
         }
     }
+
+    /// Attempts to remove the character before the current cursor position. If the cursor is at the
+    /// beginning of a line, the current line will be appended to the previous line and the cursor will be
+    /// moved to the last col of the prev line before any contents were appended.
+    /// Returns true if the operation was successful, otherwise returns false.
+    fn remove_prev_char(&mut self) -> bool {
+        // Nothing to delete if the cursor is at the first col of the first line
+        if self.cursor_position.row == 0 && self.cursor_position.col == 0 {
+            return false;
+        }
+        // remove prev char on same line
+        if self.cursor_position.col > 0 {
+            if let Some(current_line) = self.buffer.get_mut(self.cursor_position.row.0 as usize) {
+                current_line.remove((self.cursor_position.col - 1).0 as usize);
+                self.cursor_position.col -= 1;
+                return true;
+            }
+        } else {
+            // remove new line
+            let current_row = self.buffer.remove(self.cursor_position.row.0 as usize);
+            self.cursor_position.row -= 1;
+            // append current row to previous row
+            if let Some(prev_line) = self.buffer.get_mut(self.cursor_position.row.0 as usize) {
+                self.cursor_position.col.0 = prev_line.len() as u16;
+                prev_line.push_str(current_row.as_str());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Removes the next character after the cursor position.
+    /// Removes the new line if the cursor is at the end of a line, and appends the next line to the current line.
+    /// If the cursor is at the end of the document, nothing is deleted. Returns true if the next character was
+    /// removed otherwise false.
+    fn remove_next_char(&mut self) -> bool {
+        let (row, col): (SaturatingU16, SaturatingU16) =
+            (self.cursor_position.row, self.cursor_position.col);
+        let curr_line_length: u16 = self
+            .buffer
+            .get(row.0 as usize)
+            .map(|l| l.len() as u16)
+            .unwrap_or(0);
+        // If the cursor is at the last col of the last line, there is nothing to delete.
+        if (row.0 as usize) == self.buffer.len()
+            && (col.0 as usize) == self.buffer.last().map(|l| l.len()).unwrap_or(0)
+        {
+            return false;
+        }
+        // Delete empty line
+        if curr_line_length == 0 {
+            self.buffer.remove(row.0 as usize);
+            self.cursor_position.row = if (row.0 as usize) > self.buffer.len() {
+                (self.buffer.len() as u16).into()
+            } else {
+                row
+            };
+            return true;
+        }
+        // delete the next character on the same line
+        if col < curr_line_length {
+            if let Some(current_line) = self.buffer.get_mut(row.0 as usize) {
+                current_line.remove(col.0 as usize);
+                return true;
+            }
+        } else if ((row + 1).0 as usize) < self.buffer.len() {
+            // delete the new line
+            let next_line = self.buffer.remove((row + 1).0 as usize);
+            // Nothing to append if the next line is empty
+            if next_line.is_empty() {
+                return true;
+            }
+            if let Some(current_line) = self.buffer.get_mut(row.0 as usize) {
+                current_line.push_str(next_line.as_str());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Inserts a new line at the current cursor position.
+    fn insert_new_line(&mut self) {
+        let (row, col): (SaturatingU16, SaturatingU16) =
+            (self.cursor_position.row, self.cursor_position.col);
+        let curr_line_length: u16 = self
+            .buffer
+            .get(row.0 as usize)
+            .map(|l| l.len() as u16)
+            .unwrap_or(0);
+        let new_line: String = if col < curr_line_length {
+            // Move contents after cursor on current line to a new line
+            self.buffer
+                .get_mut(self.cursor_position.row.0 as usize)
+                .map(|l| l.drain(col.0 as usize..l.len()).collect())
+                .unwrap_or(String::from(""))
+        } else {
+            String::new()
+        };
+        // Insert new row
+        self.buffer.insert((row + 1).0 as usize, new_line);
+        self.cursor_position.col = 0.into();
+        self.cursor_position.row += 1;
+    }
+
+    fn remove_prev_word(&mut self) -> bool {
+        // TODO: Implement Ctrl + Backspace
+        false
+    }
+
+    fn remove_next_word(&mut self) -> bool {
+        // TODO: Implement Ctrl + Del
+        false
+    }
+
+    // TODO : Move Home, Esc, Ctrl + Home, and Ctrl + Esc here
+    fn move_to_end_of_line(&mut self) -> bool {
+        false
+    }
+
+    fn move_to_beginning_of_line(&mut self) -> bool {
+        false
+    }
+
+    fn move_to_end_of_doc(&mut self) -> bool {
+        false
+    }
+
+    fn move_to_beginning_of_doc(&mut self) -> bool {
+        false
+    }
+
+    /// Autocompletes the current word with the selected candidate from the completion component.
+    /// Returns true if there is a candidate selected otherwise false.
+    fn complete_word(&mut self) -> bool {
+        if let Some(cand) = self.completion.selected_candidate() {
+            debug!("Here is the candidate for textarea completion {}", cand);
+            self.replace_last_word(&cand);
+            self.completion.reset();
+            return true;
+        }
+        return false;
+    }
 }
 
 impl DrawableComponent for TextArea {
@@ -172,7 +313,6 @@ impl Component for TextArea {
         key: Key,
         _message_queue: &mut GlobalMessageQueue,
     ) -> anyhow::Result<EventState> {
-        // TODO: Move this logic to a TextAreaModel
         if self
             .completion
             .event(key, _message_queue)
@@ -211,52 +351,32 @@ impl Component for TextArea {
         }
 
         if (key == Key::Enter || key == Key::Tab) && self.completion.is_visible() {
-            // panic!("Please implement auto complete functionality currectly!");
-            if let Some(cand) = self.completion.selected_candidate() {
-                debug!("Here is the candidate for textarea completion {}", cand);
-                self.replace_last_word(&cand);
-                self.completion.reset();
+            if self.complete_word() {
                 return Ok(Consumed);
             }
         }
 
         if key == Key::Enter {
-            let mut new_line: String;
-            if col < curr_line_length {
-                let line_remainder = self
-                    .buffer
-                    .get_mut(row.0 as usize)
-                    .map(|l| l.drain(col.0 as usize..l.len()).collect())
-                    .unwrap_or(String::from(""));
-                new_line = line_remainder;
-            } else {
-                new_line = String::new();
-            }
-            self.buffer.insert((row + 1).0 as usize, new_line);
-            self.cursor_position.col = 0.into();
-            self.cursor_position.row += 1;
+            self.insert_new_line();
+            self.completion.reset();
             return Ok(Consumed);
         }
 
         if key == Key::Delete {
-            if col < curr_line_length {
-                if let Some(current_line) = self.buffer.get_mut(row.0 as usize) {
-                    current_line.remove(col.0 as usize);
-                    return Ok(Consumed);
-                }
-            } else {
-                // TODO : Handle line wrapping del
+            if self.remove_next_char() {
+                self.update_completion().await;
+                return Ok(Consumed);
             }
         }
 
-        if key == Key::Home && col != 0 {
-            self.cursor_position.col = 0.into();
+        if key == Key::Home {
+            self.cursor_position.col.0 = 0;
             return Ok(Consumed);
         }
 
         if key == Key::Ctrl(KeyCode::Home) {
-            self.cursor_position.row = 0.into();
-            self.cursor_position.col = 0.into();
+            self.cursor_position.row.0 = 0;
+            self.cursor_position.col.0 = 0;
             return Ok(Consumed);
         }
 
@@ -271,40 +391,19 @@ impl Component for TextArea {
             return Ok(Consumed);
         }
         if key == Key::End && col < curr_line_length {
-            self.cursor_position.col = curr_line_length.into();
+            self.cursor_position.col.0 = curr_line_length;
             return Ok(Consumed);
         }
 
         if key == Key::Backspace {
-            // FIXME: Fix backspace bug when current line is empty, the next line will be erased.
-            if col == 0 && (row - 1) < last_line_length {
-                let current_line = self.buffer.pop().unwrap_or(String::new());
-                if let Some(prev_line) = self.buffer.get_mut((row - 1).0 as usize) {
-                    prev_line.insert_str(last_line_length as usize, current_line.as_str());
-                    self.cursor_position.col = last_line_length.into();
-                    self.cursor_position.row -= 1;
-                    self.update_completion().await;
-                    return Ok(Consumed);
-                }
-            } else if let Some(current_line) = self.buffer.get_mut(row.0 as usize) {
-                if current_line.is_empty() {
-                    self.buffer.pop();
-                    if let Some(prev_line_length) = self.buffer.last().map(|l| l.len() as u16) {
-                        self.cursor_position.col = prev_line_length.into();
-                        self.cursor_position.row -= 1;
-                    }
-                    self.update_completion().await;
-                    return Ok(Consumed);
-                } else if ((col - 1).0 as usize) < current_line.len() {
-                    current_line.remove((col - 1).0 as usize);
-                    self.cursor_position.col -= 1;
-                    self.update_completion().await;
-                    return Ok(Consumed);
-                }
+            if self.remove_prev_char() {
+                self.update_completion().await;
+                return Ok(Consumed);
             }
         }
 
         if key == Key::Left {
+            self.completion.reset();
             if col == 0 && row > 0 {
                 self.cursor_position.col = self
                     .buffer
@@ -321,6 +420,7 @@ impl Component for TextArea {
         }
 
         if key == Key::Right {
+            self.completion.reset();
             if col == curr_line_length && (row.0 as usize) < self.buffer.len().saturating_sub(1) {
                 self.cursor_position.col = 0.into();
                 self.cursor_position.row += 1;
@@ -332,6 +432,7 @@ impl Component for TextArea {
         }
 
         if key == Key::Up {
+            self.completion.reset();
             if row > 0 {
                 self.cursor_position.row -= 1;
                 if col > last_line_length {
@@ -342,6 +443,7 @@ impl Component for TextArea {
         }
 
         if key == Key::Down {
+            self.completion.reset();
             if (row.0 as usize) < (self.buffer.len().saturating_sub(1)) {
                 self.cursor_position.row += 1;
                 let last_line_length = self
