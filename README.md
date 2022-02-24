@@ -4,69 +4,100 @@
 
 gobang is currently in alpha
 
-A cross-platform TUI database management tool written in Rust.  
+A cross-platform TUI database management tool written in Rust. 
 [Project Kanban Board](https://github.com/users/andyslucky/projects/2)
 
-[![github workflow status](https://img.shields.io/github/workflow/status/TaKO8Ki/gobang/CI/main)](https://github.com/TaKO8Ki/gobang/actions) [![crates](https://img.shields.io/crates/v/gobang.svg?logo=rust)](https://crates.io/crates/gobang)
+[![github workflow status](https://img.shields.io/github/workflow/status/andyslucky/gobang/CI/main)](https://github.com/andyslucky/gobang/actions) 
+
+[//]: # ([![crates]&#40;https://img.shields.io/crates/v/gobang.svg?logo=rust&#41;]&#40;https://crates.io/crates/gobang&#41;)
 ![gobang](./resources/gobang.gif)
 
 </div>
 
 ## Features
 
-- Cross-platform support (macOS, Windows, Linux)
-- Multiple Database support (MySQL, PostgreSQL, SQLite)
-- Intuitive keyboard only control
+- [X] Cross-platform support (macOS, Windows, Linux)
+- [X] Build in multi-line editor for writing queries.
+- [X] Auto completion
+- [X] Multiple Database support (MySQL, PostgreSQL, SQLite)
+- [X] Intuitive keyboard only control
 
 ## TODOs
-
-- [ ] SQL editor
-- [ ] Custom key bindings
-- [ ] Custom theme settings
-- [ ] Support the other databases
+- [ ] Custom/Customizable theme support.
+- [ ] Saving editors and opening files.
+- [ ] In app setting menu.
+- [ ] Context-based autocomplete.
+- [ ] Support the other databases.
 
 ## What does "gobang" come from?
+*Quote from the author of the original gobang project.*
 
-gobang means a Japanese game played on goban, a go board. The appearance of goban looks like table structure. And I live in Kyoto, Japan. In Kyoto city, streets are laid out on a grid (We call it “goban no me no youna (碁盤の目のような)”). They are why I named this project "gobang".
+    gobang means a Japanese game played on goban, a go board. The appearance of goban looks like table structure. 
+    And I live in Kyoto, Japan. In Kyoto city, streets are laid out on a grid (We call it “goban no me no youna (碁盤の目のような)”). 
+    They are why I named this project "gobang".
 
-## Installation
 
-### With Homebrew (Linux, macOS)
+[//]: # (## Installation)
 
-If you’re using Homebrew or Linuxbrew, install the gobang formula:
+[//]: # ()
+[//]: # (### With Homebrew &#40;Linux, macOS&#41;)
 
-```
-brew install tako8ki/tap/gobang
-```
+[//]: # ()
+[//]: # (If you’re using Homebrew or Linuxbrew, install the gobang formula:)
 
-### On Windows
+[//]: # ()
+[//]: # (```)
 
-If you're a Windows Scoop user, then you can install gobang from the [official bucket](https://github.com/ScoopInstaller/Main/blob/master/bucket/gobang.json):
+[//]: # (brew install tako8ki/tap/gobang)
 
-```
-scoop install gobang
-```
+[//]: # (```)
 
-### On NetBSD
+[//]: # ()
+[//]: # (### On Windows)
 
-If you're a NetBSD user, then you can install gobang from [pkgsrc](https://pkgsrc.se/databases/gobang):
+[//]: # ()
+[//]: # (If you're a Windows Scoop user, then you can install gobang from the [official bucket]&#40;https://github.com/ScoopInstaller/Main/blob/master/bucket/gobang.json&#41;:)
 
-```
-pkgin install gobang
-```
+[//]: # ()
+[//]: # (```)
 
-### With Cargo (Linux, macOS, Windows)
+[//]: # (scoop install gobang)
 
-If you already have a Rust environment set up, you can use the `cargo install` command:
+[//]: # (```)
 
-```
-cargo install --version 0.1.0-alpha.5 gobang
-```
+[//]: # ()
+[//]: # (### On NetBSD)
 
-### From binaries (Linux, macOS, Windows)
+[//]: # ()
+[//]: # (If you're a NetBSD user, then you can install gobang from [pkgsrc]&#40;https://pkgsrc.se/databases/gobang&#41;:)
 
-- Download the [latest release binary](https://github.com/TaKO8Ki/gobang/releases) for your system
-- Set the `PATH` environment variable
+[//]: # ()
+[//]: # (```)
+
+[//]: # (pkgin install gobang)
+
+[//]: # (```)
+
+[//]: # ()
+[//]: # (### With Cargo &#40;Linux, macOS, Windows&#41;)
+
+[//]: # ()
+[//]: # (If you already have a Rust environment set up, you can use the `cargo install` command:)
+
+[//]: # ()
+[//]: # (```)
+
+[//]: # (cargo install --version 0.1.0-alpha.5 gobang)
+
+[//]: # (```)
+
+[//]: # ()
+[//]: # (### From binaries &#40;Linux, macOS, Windows&#41;)
+
+[//]: # ()
+[//]: # (- Download the [latest release binary]&#40;https://github.com/TaKO8Ki/gobang/releases&#41; for your system)
+
+[//]: # (- Set the `PATH` environment variable)
 
 ## Usage
 
