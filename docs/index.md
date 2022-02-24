@@ -2,16 +2,12 @@
 
 ![gobang](../resources/logo.png)
 
-gobang is currently in alpha
 
 A cross-platform TUI database management tool written in Rust.
-[Project Kanban Board](https://github.com/users/andyslucky/projects/2)
 
-[![github workflow status](https://img.shields.io/github/workflow/status/andyslucky/gobang/CI/main)](https://github.com/andyslucky/gobang/actions)
+<img src="gobang.gif"/>
 
-[//]: # ([![crates]&#40;https://img.shields.io/crates/v/gobang.svg?logo=rust&#41;]&#40;https://crates.io/crates/gobang&#41;)
-![gobang](../resources/gobang.gif)
-
+gobang is currently in alpha see the [Project Kanban Board](https://github.com/users/andyslucky/projects/2).
 </div>
 
 ## Features
