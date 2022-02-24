@@ -1,6 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use database_tree::{Child, Database, Table};
 use futures::try_join;
 use log::{debug, error};
 use tui::{
@@ -10,6 +9,8 @@ use tui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
     Frame,
 };
+
+use database_tree::{Child, Database, Table};
 
 use crate::components::command::CommandInfo;
 use crate::config::KeyConfig;
@@ -135,7 +136,7 @@ impl FilterableCompletionSource for DefaultFilterableCompletionSource {
             .filter(|kw| patt.is_match(kw.as_str()))
             .map(|kw| kw.clone())
             .collect();
-        debug!("Filtered candidates {:?}", candidates);
+        // debug!("Filtered candidates {:?}", candidates);
         return Ok(candidates);
     }
 }
@@ -169,7 +170,7 @@ impl CompletionComponent {
         if let Err(e) = &candidates_res {
             error!("Error fetching completion candidates {}", e);
         } else if let Ok(candidates) = &candidates_res {
-            debug!("Filtered candidates {:?}", candidates);
+            // debug!("Filtered candidates {:?}", candidates);
             self.candidates = candidates.clone();
             if !self.candidates.is_empty() {
                 self.state.select(Some(0));
@@ -230,19 +231,22 @@ impl MovableComponent for CompletionComponent {
             let candidate_list = List::new(candidates)
                 .block(Block::default().borders(Borders::ALL))
                 .highlight_style(Style::default().bg(Color::Rgb(0xea, 0x59, 0x0b)))
-                .style(Style::default());
+                .style(Style::default().fg(Color::White));
 
-            let area = Rect::new(
-                x,
-                y,
-                width
-                    .min(f.size().width)
-                    .min(f.size().right().saturating_sub(area.x + x)),
-                (cand_len.min(5) as u16 + 2).min(f.size().bottom().saturating_sub(area.y + y + 2)),
-            );
-            f.render_widget(Clear, area);
+            let h =
+                (cand_len.min(5) as u16 + 2).min(f.size().bottom().saturating_sub(area.y + y + 2));
+
+            let w = width.min(f.size().width);
+            let max_x = f.size().right().min(area.right());
+            let max_y = f.size().bottom();
+            let y = if y >= max_y { max_y } else { y };
+            let x = if x >= max_x { max_x } else { x };
+            let comp_area = Rect::new(if x + w > max_x { max_x - w } else { x }, y, w, h);
             let mut st = self.state.clone();
-            f.render_stateful_widget(candidate_list, area, &mut st);
+            if comp_area.bottom() <= f.size().bottom() {
+                f.render_widget(Clear, comp_area);
+                f.render_stateful_widget(candidate_list, comp_area, &mut st);
+            }
         }
         Ok(())
     }
@@ -257,10 +261,10 @@ impl Component for CompletionComponent {
         key: crate::event::Key,
         _message_queue: &mut crate::app::GlobalMessageQueue,
     ) -> Result<EventState> {
-        if key == self.key_config.move_down {
+        if key == self.key_config.move_down && self.is_visible() {
             self.next();
             return Ok(EventState::Consumed);
-        } else if key == self.key_config.move_up {
+        } else if key == self.key_config.move_up && self.is_visible() {
             self.previous();
             return Ok(EventState::Consumed);
         }
@@ -268,7 +272,7 @@ impl Component for CompletionComponent {
     }
 
     fn is_visible(&self) -> bool {
-        return !self.word.is_empty();
+        return !self.word.is_empty() && !self.candidates.is_empty();
     }
 
     fn reset(&mut self) {

@@ -1,8 +1,16 @@
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug)]
 pub struct PatternPosition {
     pub index: usize,
     pub length: usize,
 }
 
+impl Display for PatternPosition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 macro_rules! find_separators {
     ($input : expr, $separators: expr) => {
         $separators
@@ -20,8 +28,8 @@ pub fn find_first_separator(input: &String) -> Option<PatternPosition> {
     val
 }
 
-pub fn find_last_separator(input: &String) -> Option<PatternPosition> {
+pub fn find_last_separator<S: Into<String>>(input: S) -> Option<PatternPosition> {
     let pattern = regex::Regex::new(r#"\W+"#).unwrap();
-    let val = find_separators!(input, pattern).last();
+    let val = find_separators!(input.into(), pattern).last();
     val
 }
