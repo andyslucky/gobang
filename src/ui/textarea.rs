@@ -1,11 +1,12 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
+use itertools::Itertools;
 use log::debug;
 use tui::backend::Backend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::text::{Spans, Text};
+use tui::text::{Span, Spans, Text};
 use tui::widgets::{Block, Borders, Paragraph};
 use tui::Frame;
 
@@ -68,7 +69,29 @@ impl TextArea {
         let lines: Vec<Spans> = self
             .buffer
             .iter()
-            .map(|l| Spans::from(l.as_str()))
+            .map(|l| {
+                // Renders spaces as a bullet \u{2022}
+                let mut buff = String::new();
+                let mut spans: Vec<Span> = vec![];
+                for c in l.chars() {
+                    if c == ' ' {
+                        if !buff.is_empty() {
+                            let temp = buff;
+                            buff = String::new();
+                            spans.push(Span::from(temp));
+                        }
+                        spans.push(
+                            Span::styled("\u{2022}", Style::default().fg(Color::DarkGray)).into(),
+                        );
+                    } else {
+                        buff.push(c);
+                    }
+                }
+                if !buff.is_empty() {
+                    spans.push(Span::from(buff));
+                }
+                Spans::from(spans)
+            })
             .collect();
         Text::from(lines)
     }
@@ -102,6 +125,22 @@ impl TextArea {
                 self.cursor_position.col.0 = candidate.len() as u16;
             }
         }
+    }
+
+    fn curr_line_length(&self) -> SaturatingU16 {
+        self.buffer
+            .get(self.cursor_position.row.0 as usize)
+            .map(|l| l.len() as u16)
+            .unwrap_or(0)
+            .into()
+    }
+
+    fn last_line_length(&self) -> SaturatingU16 {
+        self.buffer
+            .last()
+            .map(|l| l.len() as u16)
+            .unwrap_or(0)
+            .into()
     }
 
     /// Attempts to remove the character before the current cursor position. If the cursor is at the
@@ -141,11 +180,7 @@ impl TextArea {
     fn remove_next_char(&mut self) -> bool {
         let (row, col): (SaturatingU16, SaturatingU16) =
             (self.cursor_position.row, self.cursor_position.col);
-        let curr_line_length: u16 = self
-            .buffer
-            .get(row.0 as usize)
-            .map(|l| l.len() as u16)
-            .unwrap_or(0);
+        let curr_line_length = self.curr_line_length();
         // If the cursor is at the last col of the last line, there is nothing to delete.
         if (row.0 as usize) == self.buffer.len()
             && (col.0 as usize) == self.buffer.last().map(|l| l.len()).unwrap_or(0)
@@ -187,11 +222,7 @@ impl TextArea {
     fn insert_new_line(&mut self) {
         let (row, col): (SaturatingU16, SaturatingU16) =
             (self.cursor_position.row, self.cursor_position.col);
-        let curr_line_length: u16 = self
-            .buffer
-            .get(row.0 as usize)
-            .map(|l| l.len() as u16)
-            .unwrap_or(0);
+        let curr_line_length: SaturatingU16 = self.curr_line_length();
         let new_line: String = if col < curr_line_length {
             // Move contents after cursor on current line to a new line
             self.buffer
@@ -218,19 +249,78 @@ impl TextArea {
     }
 
     // TODO : Move Home, Esc, Ctrl + Home, and Ctrl + Esc here
-    fn move_to_end_of_line(&mut self) -> bool {
+    fn move_to_beginning_of_line(&mut self) {
+        self.cursor_position.col = 0.into();
+    }
+    fn move_to_end_of_line(&mut self) {
+        let curr_line_length = self.curr_line_length();
+        self.cursor_position.col = curr_line_length.into();
+    }
+
+    fn move_to_beginning_of_doc(&mut self) {
+        self.cursor_position.row = 0.into();
+        self.cursor_position.col = 0.into();
+    }
+
+    fn move_to_end_of_doc(&mut self) {
+        self.cursor_position.row = ((self.buffer.len().saturating_sub(1)) as u16).into();
+        self.cursor_position.col = self.last_line_length();
+    }
+
+    fn move_up(&mut self) -> bool {
+        let (row, col) = (&mut self.cursor_position.row, &mut self.cursor_position.col);
+        if ((*row).0 as usize) == 0 {
+            return false;
+        }
+        (*row) -= 1;
+        if let Some(new_line) = self.buffer.get(row.0 as usize) {
+            if (col.0 as usize) > new_line.len() {
+                (*col).0 = new_line.len() as u16;
+            }
+        }
+        return true;
+    }
+
+    fn move_down(&mut self) -> bool {
+        let (row, col) = (&mut self.cursor_position.row, &mut self.cursor_position.col);
+        if ((*row).0 as usize) == self.buffer.len().saturating_sub(1) {
+            return false;
+        }
+        (*row) += 1;
+        if let Some(new_line) = self.buffer.get(row.0 as usize) {
+            if (col.0 as usize) > new_line.len() {
+                (*col).0 = new_line.len() as u16;
+            }
+        }
+        return true;
+    }
+
+    fn move_left(&mut self) -> bool {
+        let (row, col) = (&mut self.cursor_position.row, &mut self.cursor_position.col);
+        if *col == 0 && *row > 0 {
+            // move cursor up one line then to the end;
+            (*row) -= 1;
+            self.move_to_end_of_line();
+            return true;
+        } else if *col > 0 {
+            self.cursor_position.col -= 1;
+            return true;
+        }
         false
     }
 
-    fn move_to_beginning_of_line(&mut self) -> bool {
-        false
-    }
-
-    fn move_to_end_of_doc(&mut self) -> bool {
-        false
-    }
-
-    fn move_to_beginning_of_doc(&mut self) -> bool {
+    fn move_right(&mut self) -> bool {
+        let curr_line_length = self.curr_line_length();
+        let (row, col) = (&mut self.cursor_position.row, &mut self.cursor_position.col);
+        if *col == curr_line_length && (row.0 as usize) < self.buffer.len().saturating_sub(1) {
+            // Move the cursor down 1 row and then to the beginning of the line
+            (*row) += 1;
+            self.move_to_beginning_of_line();
+            return true;
+        } else if *col < curr_line_length {
+            (*col) += 1;
+            return true;
+        }
         false
     }
 
@@ -369,32 +459,6 @@ impl Component for TextArea {
             }
         }
 
-        if key == Key::Home {
-            self.cursor_position.col.0 = 0;
-            return Ok(Consumed);
-        }
-
-        if key == Key::Ctrl(KeyCode::Home) {
-            self.cursor_position.row.0 = 0;
-            self.cursor_position.col.0 = 0;
-            return Ok(Consumed);
-        }
-
-        if key == Key::Ctrl(KeyCode::End) {
-            self.cursor_position.row = ((self.buffer.len() - 1) as u16).into();
-            self.cursor_position.col = self
-                .buffer
-                .last()
-                .map(|l| l.len() as u16)
-                .unwrap_or(0)
-                .into();
-            return Ok(Consumed);
-        }
-        if key == Key::End && col < curr_line_length {
-            self.cursor_position.col.0 = curr_line_length;
-            return Ok(Consumed);
-        }
-
         if key == Key::Backspace {
             if self.remove_prev_char() {
                 self.update_completion().await;
@@ -402,58 +466,54 @@ impl Component for TextArea {
             }
         }
 
-        if key == Key::Left {
+        if key == Key::Home {
+            self.move_to_beginning_of_line();
             self.completion.reset();
-            if col == 0 && row > 0 {
-                self.cursor_position.col = self
-                    .buffer
-                    .get((row - 1).0 as usize)
-                    .map(|l| l.len() as u16)
-                    .unwrap_or(0)
-                    .into();
-                self.cursor_position.row -= 1;
-                return Ok(Consumed);
-            } else if col > 0 {
-                self.cursor_position.col -= 1;
+            return Ok(Consumed);
+        }
+
+        if key == Key::Ctrl(KeyCode::Home) {
+            self.move_to_beginning_of_doc();
+            self.completion.reset();
+            return Ok(Consumed);
+        }
+
+        if key == Key::End {
+            self.move_to_end_of_line();
+            self.completion.reset();
+            return Ok(Consumed);
+        }
+
+        if key == Key::Ctrl(KeyCode::End) {
+            self.move_to_end_of_doc();
+            self.completion.reset();
+            return Ok(Consumed);
+        }
+
+        if key == Key::Left {
+            if self.move_left() {
+                self.completion.reset();
                 return Ok(Consumed);
             }
         }
 
         if key == Key::Right {
-            self.completion.reset();
-            if col == curr_line_length && (row.0 as usize) < self.buffer.len().saturating_sub(1) {
-                self.cursor_position.col = 0.into();
-                self.cursor_position.row += 1;
-                return Ok(Consumed);
-            } else if col < curr_line_length {
-                self.cursor_position.col += 1;
+            if self.move_right() {
+                self.completion.reset();
                 return Ok(Consumed);
             }
         }
 
         if key == Key::Up {
-            self.completion.reset();
-            if row > 0 {
-                self.cursor_position.row -= 1;
-                if col > last_line_length {
-                    self.cursor_position.col = last_line_length.into();
-                }
+            if self.move_up() {
+                self.completion.reset();
                 return Ok(Consumed);
             }
         }
 
         if key == Key::Down {
-            self.completion.reset();
-            if (row.0 as usize) < (self.buffer.len().saturating_sub(1)) {
-                self.cursor_position.row += 1;
-                let last_line_length = self
-                    .buffer
-                    .get(row.0 as usize)
-                    .map(|l| l.len() as u16)
-                    .unwrap_or(0);
-                if col > last_line_length {
-                    self.cursor_position.col = last_line_length.into();
-                }
+            if self.move_down() {
+                self.completion.reset();
                 return Ok(Consumed);
             }
         }

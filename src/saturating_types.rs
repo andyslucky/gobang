@@ -23,6 +23,45 @@ impl Into<usize> for SaturatingU16 {
     }
 }
 
+impl PartialEq<SaturatingU16> for SaturatingU16 {
+    fn eq(&self, other: &SaturatingU16) -> bool {
+       return self.0 == other.0;
+    }
+
+    fn ne(&self, other: &SaturatingU16) -> bool {
+        return self.0 != other.0;
+    }
+}
+
+impl PartialOrd<SaturatingU16> for SaturatingU16 {
+    fn partial_cmp(&self, other: &SaturatingU16) -> Option<Ordering> {
+        if self.0 < other.0 {
+            Some(Ordering::Less)
+        } else if self.0 > other.0 {
+            Some(Ordering::Greater)
+        } else {
+            Some(Ordering::Equal)
+        }
+    }
+
+    fn lt(&self, other: &SaturatingU16) -> bool {
+        return self.0 < other.0;
+    }
+
+    fn le(&self, other: &SaturatingU16) -> bool {
+        return self.0 <= other.0;
+    }
+
+    fn gt(&self, other: &SaturatingU16) -> bool {
+        return self.0 > other.0;
+    }
+
+    fn ge(&self, other: &SaturatingU16) -> bool {
+        return self.0 >= other.0;
+    }
+}
+
+
 impl PartialEq<u16> for SaturatingU16 {
     fn eq(&self, other: &u16) -> bool {
         return self.0 == *other;
