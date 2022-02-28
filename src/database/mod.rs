@@ -262,11 +262,15 @@ macro_rules! pool_exec_impl {
     };
 }
 
-#[macro_export]
-macro_rules! get_or_null {
-    ($value:expr) => {
-        $value.map_or("NULL".to_string(), |v| v.to_string())
-    };
+// #[macro_export]
+// macro_rules! get_or_null {
+//     ($value:expr) => {
+//         $value.map_or("NULL".to_string(), |v| v.to_string())
+//     };
+// }
+#[inline(always)]
+fn get_or_null<T: ToString>(val: Option<T>) -> String {
+    val.map_or("NULL".to_string(), |v| v.to_string())
 }
 
 macro_rules! convert_column {
@@ -274,7 +278,7 @@ macro_rules! convert_column {
         $(
         if let Ok(value) = $row.try_get($column_name) {
             let value : Option<$typ> = value;
-            return Ok(get_or_null!(value))
+            return Ok(get_or_null(value))
         }
         )+
     };
@@ -287,9 +291,11 @@ macro_rules! convert_column_to_common_types {
             $column_name,
             String,
             &str,
+            i8,
             i16,
             i32,
             i64,
+            u32,
             f32,
             f64,
             chrono::DateTime<chrono::Utc>,
@@ -311,9 +317,11 @@ pub fn convert_column_val_to_str<R: sqlx::Row + std::any::Any, C: sqlx::Column>(
     let column_name = column.name();
     if let Some(row) = row.downcast_ref::<MySqlRow>() {
         convert_column_to_common_types!(row, column_name);
-        convert_column!(row, column_name, rust_decimal::Decimal);
+        convert_column!(row, column_name, rust_decimal::Decimal, u16, u64);
+        // convert_column(row, column_name, u64);
     } else if let Some(row) = row.downcast_ref::<SqliteRow>() {
         convert_column_to_common_types!(row, column_name);
+        convert_column!(row, column_name, u16);
     } else if let Some(row) = row.downcast_ref::<PgRow>() {
         convert_column_to_common_types!(row, column_name);
         convert_column!(row, column_name, rust_decimal::Decimal);

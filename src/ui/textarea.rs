@@ -411,18 +411,8 @@ impl Component for TextArea {
         {
             return Ok(Consumed);
         }
-        let col = self.cursor_position.col.clone();
-        let row = self.cursor_position.row.clone();
-        let curr_line_length = self
-            .buffer
-            .get(row.0 as usize)
-            .map(|l| l.len() as u16)
-            .unwrap_or(0);
-        let last_line_length = self
-            .buffer
-            .get((row - 1).0 as usize)
-            .map(|l| l.len() as u16)
-            .unwrap_or(0);
+        let col = &self.cursor_position.col;
+        let row = &self.cursor_position.row;
 
         if let Key::Char(c) = key {
             let current_line: &mut String = {

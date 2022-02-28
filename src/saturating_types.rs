@@ -1,9 +1,18 @@
 /// Module for types whose operations saturate at bounds instead of panic.
 use std::cmp::Ordering;
 use std::ops;
+use std::ops::Deref;
 
 #[derive(Clone, Copy)]
 pub struct SaturatingU16(pub u16);
+
+impl Deref for SaturatingU16 {
+    type Target = u16;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl Into<SaturatingU16> for u16 {
     fn into(self) -> SaturatingU16 {
@@ -25,7 +34,7 @@ impl Into<usize> for SaturatingU16 {
 
 impl PartialEq<SaturatingU16> for SaturatingU16 {
     fn eq(&self, other: &SaturatingU16) -> bool {
-       return self.0 == other.0;
+        return self.0 == other.0;
     }
 
     fn ne(&self, other: &SaturatingU16) -> bool {
@@ -60,7 +69,6 @@ impl PartialOrd<SaturatingU16> for SaturatingU16 {
         return self.0 >= other.0;
     }
 }
-
 
 impl PartialEq<u16> for SaturatingU16 {
     fn eq(&self, other: &u16) -> bool {
