@@ -18,7 +18,7 @@ members=[
 [dependencies]
 libtok2me = {git = "https://github.com/andyslucky/libtok2me"}
 log4rs = {version = "1.0.0", features = ["file_appender"]}
-regex = "1.5.4"
+regex = "1.5.5"
 log = "0.4.14"
 tui = { version = "0.17.0", features = ["crossterm"], default-features = false }
 crossterm = { version = "0.23", features=["serde"]}
